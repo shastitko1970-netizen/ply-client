@@ -16,6 +16,8 @@ func TestHTMLLooksLikeSite(t *testing.T) {
 		"Россия мимо",
 		"Ключ",
 		"/v1/state",
+		"class=\"chrome\"",
+		"plyWin",
 	} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("html missing %q", want)

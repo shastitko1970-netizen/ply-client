@@ -15,6 +15,7 @@ import (
 	"gioui.org/app"
 	"gioui.org/f32"
 	"gioui.org/io/pointer"
+	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -52,9 +53,9 @@ type ui struct {
 	updBusy  bool
 	updNote  string
 	t0       time.Time
-	scroll   widget.List
 	engine   *core.Daemon
 	lastPoll time.Time
+	deco     widget.Decorations
 }
 
 func main() {
@@ -70,8 +71,9 @@ func main() {
 		w := new(app.Window)
 		w.Option(
 			app.Title(core.WindowTitle),
-			app.Size(unit.Dp(900), unit.Dp(600)),
-			app.MinSize(unit.Dp(380), unit.Dp(480)),
+			app.Size(unit.Dp(980), unit.Dp(660)),
+			app.MinSize(unit.Dp(860), unit.Dp(560)),
+			app.Decorated(false),
 		)
 		if err := run(w); err != nil {
 			log.Fatal(err)
@@ -85,7 +87,6 @@ func run(w *app.Window) error {
 	th := plyui.NewTheme()
 
 	u := &ui{w: w, th: th, admin: core.IsAdmin(), status: "ожидание", t0: time.Now()}
-	u.scroll.Axis = layout.Vertical
 	u.url.SingleLine = true
 	u.url.Submit = true
 	u.auto.Value = true
@@ -131,6 +132,9 @@ func run(w *app.Window) error {
 				go u.pullState()
 			}
 			u.update(gtx)
+			if a := u.deco.Update(gtx); a != 0 {
+				w.Perform(a)
+			}
 			paint.Fill(gtx.Ops, plyui.Bg)
 			u.layout(gtx)
 			if u.live || u.busy || u.engine != nil {
@@ -400,10 +404,6 @@ func (u *ui) applyUpdate() {
 	os.Exit(0)
 }
 
-func (u *ui) wide(gtx layout.Context) bool {
-	return gtx.Constraints.Max.X >= gtx.Dp(640)
-}
-
 func (u *ui) row2(gtx layout.Context, a, b layout.Widget) layout.Dimensions {
 	if gtx.Constraints.Max.X < gtx.Dp(400) {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
@@ -426,50 +426,49 @@ func (u *ui) row2(gtx layout.Context, a, b layout.Widget) layout.Dimensions {
 }
 
 func (u *ui) layout(gtx layout.Context) layout.Dimensions {
-	inset := layout.Inset{Top: unit.Dp(22), Bottom: unit.Dp(16), Left: unit.Dp(24), Right: unit.Dp(24)}
-	return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-			layout.Rigid(u.layoutHeader),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(18)}.Layout),
-			layout.Flexed(1, u.layoutMain),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
-			layout.Rigid(u.layoutFooter),
-		)
-	})
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(u.layoutChrome),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			inset := layout.Inset{Top: unit.Dp(8), Bottom: unit.Dp(16), Left: unit.Dp(24), Right: unit.Dp(24)}
+			return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+					layout.Rigid(u.layoutHeader),
+					layout.Rigid(layout.Spacer{Height: unit.Dp(18)}.Layout),
+					layout.Flexed(1, u.layoutMain),
+					layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+					layout.Rigid(u.layoutFooter),
+				)
+			})
+		}),
+	)
+}
+
+func (u *ui) layoutChrome(gtx layout.Context) layout.Dimensions {
+	gtx.Constraints.Min.Y = gtx.Dp(36)
+	gtx.Constraints.Max.Y = gtx.Dp(36)
+	deco := material.Decorations(u.th, &u.deco, system.ActionMinimize|system.ActionClose, "Ply")
+	deco.Background = plyui.Bg
+	deco.Foreground = plyui.Dim
+	deco.Title.Color = plyui.Dim
+	deco.Title.TextSize = 12
+	return deco.Layout(gtx)
 }
 
 func (u *ui) layoutMain(gtx layout.Context) layout.Dimensions {
-	lst := material.List(u.th, &u.scroll)
-	lst.AnchorStrategy = material.Overlay
-	if u.wide(gtx) {
-		return layout.Flex{Alignment: layout.Start, Spacing: layout.SpaceStart}.Layout(gtx,
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				gtx.Constraints.Min.X = gtx.Dp(240)
-				gtx.Constraints.Max.X = gtx.Dp(300)
-				gtx.Constraints.Min.Y = gtx.Constraints.Max.Y
-				return u.layoutHero(gtx)
-			}),
-			layout.Rigid(layout.Spacer{Width: unit.Dp(28)}.Layout),
-			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-				return lst.Layout(gtx, 1, func(gtx layout.Context, _ int) layout.Dimensions {
-					gtx.Constraints.Min.X = gtx.Constraints.Max.X
-					return u.layoutCards(gtx)
-				})
-			}),
-		)
-	}
-	return lst.Layout(gtx, 1, func(gtx layout.Context, _ int) layout.Dimensions {
-		gtx.Constraints.Min.X = gtx.Constraints.Max.X
-		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return layout.Center.Layout(gtx, u.layoutPower)
-			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
-			layout.Rigid(u.layoutPowerCaption),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
-			layout.Rigid(u.layoutCards),
-		)
-	})
+	return layout.Flex{Alignment: layout.Start}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			gtx.Constraints.Min.X = gtx.Dp(240)
+			gtx.Constraints.Max.X = gtx.Dp(280)
+			gtx.Constraints.Min.Y = gtx.Constraints.Max.Y
+			return u.layoutHero(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Width: unit.Dp(28)}.Layout),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			gtx.Constraints.Min.X = gtx.Constraints.Max.X
+			gtx.Constraints.Min.Y = 0
+			return u.layoutCards(gtx)
+		}),
+	)
 }
 
 func (u *ui) layoutHero(gtx layout.Context) layout.Dimensions {
