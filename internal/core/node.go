@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const UA = "Ply/1.4"
+const UA = "Ply/1.5"
 
 type Node struct {
 	UUID, Host, Flow, Security, Network, SNI, FP, PBK, SID, Spx, Enc string
