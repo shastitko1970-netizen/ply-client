@@ -67,7 +67,7 @@ jobs:
         run: |
           go build -trimpath -ldflags="-s -w -H windowsgui" -o dist/PlySetup.exe ./cmd/setup
           Copy-Item README.txt dist/README.txt
-          Compress-Archive -Path dist/PlySetup.exe, dist/README.txt -DestinationPath dist/Ply-1.10.4-win64.zip -Force
+          Compress-Archive -Path dist/PlySetup.exe, dist/README.txt -DestinationPath dist/Ply-1.10.5-win64.zip -Force
           Compress-Archive -Path payload\* -DestinationPath dist/Ply-portable-win64.zip -Force
 
       - uses: actions/upload-artifact@v4
@@ -75,21 +75,21 @@ jobs:
           name: ply-windows
           path: |
             dist/PlySetup.exe
-            dist/Ply-1.10.4-win64.zip
+            dist/Ply-1.10.5-win64.zip
             dist/Ply-portable-win64.zip
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.10.4
-          name: Ply 1.10.4
+          tag_name: v1.10.5
+          name: Ply 1.10.5
           body: |
-            Окно таскается за верхнюю полоску. Размер с учётом масштаба Windows.
+            Фикс Access is denied на xray после перезапуска и автозапуска.
 
-            UAC только у ядра. Крестик закрывает окно — PlyCore держит туннель.
+            Окно таскается за верх. UAC только у ядра. Крестик закрывает окно — PlyCore держит туннель.
             Ключи: Paper, vless, hy2, vmess, trojan, ss. TUIC Xray не умеет.
           files: |
-            dist/Ply-1.10.4-win64.zip
+            dist/Ply-1.10.5-win64.zip
             dist/PlySetup.exe
             dist/Ply-portable-win64.zip
           fail_on_unmatched_files: true

@@ -211,6 +211,8 @@ func (u *ui) doInstall() {
 		u.fail(err.Error())
 		return
 	}
+	core.UnblockDir(u.dest)
+	core.DefendInstallDir(u.dest)
 	core.AllowFirewall(ply)
 	core.AllowFirewall(coreExe)
 	core.AllowFirewall(xray)

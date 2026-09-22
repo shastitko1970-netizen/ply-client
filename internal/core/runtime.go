@@ -127,8 +127,15 @@ func StartXray(bin, cfg string) error {
 	cmd.Stderr = lf
 	tuneCmd(cmd)
 	if err := cmd.Start(); err != nil {
-		_ = lf.Close()
-		return fmt.Errorf("запуск xray: %w", err)
+		plain := exec.Command(bin, "run", "-c", cfg)
+		plain.Dir = filepath.Dir(bin)
+		plain.Stdout = lf
+		plain.Stderr = lf
+		if err2 := plain.Start(); err2 != nil {
+			_ = lf.Close()
+			return fmt.Errorf("запуск xray: %w", err)
+		}
+		cmd = plain
 	}
 	go func() {
 		_ = cmd.Wait()
@@ -324,6 +331,7 @@ func Connect(source string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	UnblockFile(xray)
 	if runtime.GOOS == "windows" {
 		AllowFirewall(xray)
 		if exe, e := os.Executable(); e == nil {
