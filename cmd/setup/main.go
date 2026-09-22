@@ -127,10 +127,13 @@ func (u *ui) update(gtx layout.Context) {
 		go u.doInstall()
 	}
 	if u.launch.Clicked(gtx) && u.stage == stepDone {
+		coreExe := filepath.Join(u.dest, "PlyCore.exe")
+		cc := exec.Command(coreExe)
+		cc.Dir = u.dest
+		_ = cc.Start()
+		time.Sleep(500 * time.Millisecond)
 		exe := filepath.Join(u.dest, "Ply.exe")
-		cmd := exec.Command(exe)
-		cmd.Dir = u.dest
-		_ = cmd.Start()
+		_ = exec.Command("explorer.exe", exe).Start()
 		os.Exit(0)
 	}
 }
@@ -190,7 +193,7 @@ func (u *ui) doInstall() {
 	readme := "Ply " + core.Version + "\r\n\r\n" +
 		"КАК ЗАПУСТИТЬ\r\n" +
 		"1. Ply стоит в Program Files. Ищи «Ply» в меню Пуск или на рабочем столе.\r\n" +
-		"2. Согласись на права администратора.\r\n" +
+		"2. Окно без прав. UAC — только у ядра, потом значок у часов.\r\n" +
 		"3. Вставь ключ (Paper / vless / hy2 / vmess / trojan / ss), нажми кнопку питания.\r\n" +
 		"4. Крестик закрывает окно. Ядро PlyCore остаётся в трее — туннель живой.\r\n" +
 		"5. «Россия мимо» — .ru и российские сервисы без VPN.\r\n" +

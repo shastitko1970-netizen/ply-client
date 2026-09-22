@@ -10,12 +10,17 @@ TUIC Xray не умеет.
 
 ## Скачать
 
-Релиз **1.10.0**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.0](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.0)
+Релиз **1.10.1**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.1](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.1)
 
-1. Скачай **Ply-1.10.0-win64.zip**, запусти **PlySetup.exe**
-2. Ядро PlyCore ставится само, автозапуск — на ядро, не на окно
+1. Скачай **Ply-1.10.1-win64.zip**, запусти **PlySetup.exe**
+2. Окно без прав. UAC — только у ядра, потом значок у часов
 3. С 1.3+ можно обновить из самого Ply
 4. Крестик = окно спит. Выход из VPN — только из трея
+
+## 1.10.1
+
+- Кэш окна в AppData, не в Program Files — иначе Edge ругался и окна не было
+- Ply.exe без админа, PlyCore по UAC. Трей живёт в ядре
 
 ## 1.10.0
 

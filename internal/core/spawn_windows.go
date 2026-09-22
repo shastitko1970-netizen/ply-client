@@ -9,6 +9,9 @@ import (
 )
 
 func startCoreProcess(exe string) error {
+	if !IsAdmin() {
+		return StartElevated(exe, 0)
+	}
 	cmd := exec.Command(exe)
 	cmd.Dir = filepath.Dir(exe)
 	tuneCmd(cmd)
@@ -20,11 +23,25 @@ func LaunchUI() error {
 	if err != nil {
 		return err
 	}
+	if IsAdmin() {
+		if err := startUnelevated(exe); err == nil {
+			return nil
+		}
+	}
 	cmd := exec.Command(exe)
 	cmd.Dir = filepath.Dir(exe)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    false,
 		CreationFlags: 0x00000200 | 0x01000000, // NEW_PROCESS_GROUP | BREAKAWAY_FROM_JOB
+	}
+	return cmd.Start()
+}
+
+func startUnelevated(exe string) error {
+	cmd := exec.Command("explorer.exe", exe)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    false,
+		CreationFlags: 0x00000200 | 0x01000000,
 	}
 	return cmd.Start()
 }

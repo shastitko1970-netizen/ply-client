@@ -4,7 +4,6 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/jchv/go-webview2"
 
@@ -16,11 +15,11 @@ func openWebShell() bool {
 	if err != nil {
 		return false
 	}
-	data := ""
-	if dir, e := core.DataDir(); e == nil {
-		data = filepath.Join(dir, "webview")
-		_ = os.MkdirAll(data, 0755)
+	data, err := core.WebViewDir()
+	if err != nil {
+		return false
 	}
+	_ = os.Setenv("WEBVIEW2_USER_DATA_FOLDER", data)
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		Debug:     false,
 		AutoFocus: true,

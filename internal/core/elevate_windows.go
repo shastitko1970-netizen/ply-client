@@ -5,6 +5,7 @@ package core
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 	"unsafe"
 )
@@ -18,11 +19,7 @@ func IsAdmin() bool {
 	return true
 }
 
-func RelaunchElevated() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
+func StartElevated(exe string, show int) error {
 	verb, err := syscall.UTF16PtrFromString("runas")
 	if err != nil {
 		return err
@@ -31,7 +28,7 @@ func RelaunchElevated() error {
 	if err != nil {
 		return err
 	}
-	cwd, err := syscall.UTF16PtrFromString("")
+	cwd, err := syscall.UTF16PtrFromString(filepath.Dir(exe))
 	if err != nil {
 		return err
 	}
@@ -45,7 +42,7 @@ func RelaunchElevated() error {
 		uintptr(unsafe.Pointer(file)),
 		uintptr(unsafe.Pointer(param)),
 		uintptr(unsafe.Pointer(cwd)),
-		1, // SW_SHOWNORMAL
+		uintptr(show),
 	)
 	if r <= 32 {
 		if e != nil && e != syscall.Errno(0) {
@@ -54,4 +51,12 @@ func RelaunchElevated() error {
 		return fmt.Errorf("запрос прав отклонён")
 	}
 	return nil
+}
+
+func RelaunchElevated() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return StartElevated(exe, 1)
 }

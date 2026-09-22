@@ -164,7 +164,11 @@ func EnsureWorker() (*Daemon, error) {
 	if err := startCoreProcess(exe); err != nil {
 		return nil, fmt.Errorf("запуск ядра: %w", err)
 	}
-	deadline := time.Now().Add(8 * time.Second)
+	wait := 8 * time.Second
+	if !IsAdmin() {
+		wait = 45 * time.Second
+	}
+	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
 		if d := TryAttach(); d != nil {
 			return d, nil
