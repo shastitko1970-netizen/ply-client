@@ -1,9 +1,13 @@
 package core
 
-var Version = "1.8.0"
+var Version = "1.9.0"
 
 const AppUserModelID = "Ply.VPN"
 const WindowTitle = "Ply — VPN"
+const CoreWindowTitle = "PlyCore"
 
 const GitHubOwner = "shastitko1970-netizen"
 const GitHubRepo = "ply-client"
+
+const CoreExeName = "PlyCore.exe"
+const UIExeName = "Ply.exe"

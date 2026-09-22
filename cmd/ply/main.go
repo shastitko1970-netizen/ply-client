@@ -53,6 +53,8 @@ type ui struct {
 	updNote  string
 	t0       time.Time
 	scroll   widget.List
+	engine   *core.Daemon
+	lastPoll time.Time
 }
 
 func main() {
@@ -88,16 +90,9 @@ func run(w *app.Window) error {
 	if saved := core.ReadURL(); saved != "" {
 		u.url.SetText(saved)
 	}
-	go func() {
-		time.Sleep(1600 * time.Millisecond)
-		u.checkUpdate(false)
-	}()
 	if u.admin {
-		if saved := strings.TrimSpace(u.url.Text()); saved != "" {
-			u.busy = true
-			u.status = "включаю"
-			go u.doConnect(saved, true)
-		}
+		u.status = "ядро"
+		go u.bootWorker()
 	} else {
 		u.status = "нужны права"
 		u.err = "Туннель без прав администратора не встанет."
@@ -107,12 +102,14 @@ func run(w *app.Window) error {
 	for {
 		switch e := w.Event().(type) {
 		case app.DestroyEvent:
-			core.RemoveTray()
-			_ = core.Disconnect()
+			if u.engine == nil {
+				core.RemoveTray()
+				_ = core.Disconnect()
+			}
 			return e.Err
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
-			if !u.trayOn {
+			if u.engine == nil && !u.trayOn {
 				u.trayOn = core.AttachTray(core.TrayHooks{
 					Invalidate: w.Invalidate,
 					OnDisconnect: func() {
@@ -126,15 +123,73 @@ func run(w *app.Window) error {
 					},
 				})
 			}
+			if u.engine != nil && time.Since(u.lastPoll) > 350*time.Millisecond {
+				u.lastPoll = time.Now()
+				go u.pullState()
+			}
 			u.update(gtx)
 			paint.Fill(gtx.Ops, plyui.Bg)
 			u.layout(gtx)
-			if u.live || u.busy {
+			if u.live || u.busy || u.engine != nil {
 				gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(80 * time.Millisecond)})
 			}
 			e.Frame(gtx.Ops)
 		}
 	}
+}
+
+func (u *ui) bootWorker() {
+	d, err := core.EnsureWorker()
+	if err != nil {
+		u.err = err.Error()
+		u.status = "без ядра"
+		u.w.Invalidate()
+		if saved := strings.TrimSpace(u.url.Text()); saved != "" {
+			u.busy = true
+			u.status = "включаю"
+			u.w.Invalidate()
+			u.doConnect(saved, true)
+		}
+		return
+	}
+	u.engine = d
+	u.err = ""
+	u.pullState()
+}
+
+func (u *ui) applySnap(s *core.Snapshot) {
+	if s == nil {
+		return
+	}
+	u.busy = s.Busy
+	u.live = s.Live
+	u.status = s.Status
+	u.err = s.Error
+	u.detail = s.Detail
+	u.exitIP = s.ExitIP
+	u.node = s.Node
+	u.split.Value = s.Split
+	u.auto.Value = s.Auto
+	u.upd = s.Update
+	if s.UpdNote != "" {
+		u.updNote = s.UpdNote
+	}
+	if strings.TrimSpace(u.url.Text()) == "" && s.URL != "" {
+		u.url.SetText(s.URL)
+	}
+	u.updBusy = s.Busy && s.UpdNote != ""
+}
+
+func (u *ui) pullState() {
+	if u.engine == nil {
+		return
+	}
+	s, err := u.engine.State()
+	if err != nil {
+		return
+	}
+	u.applySnap(s)
+	u.w.Invalidate()
 }
 
 func (u *ui) update(gtx layout.Context) {
@@ -148,14 +203,22 @@ func (u *ui) update(gtx layout.Context) {
 		}
 	}
 	if u.auto.Update(gtx) {
-		exe, _ := os.Executable()
-		_ = core.SetAutoStart(u.auto.Value, exe)
+		if u.engine != nil {
+			go func() { _, _ = u.engine.SetAuto(u.auto.Value) }()
+		} else {
+			exe, _ := os.Executable()
+			_ = core.SetAutoStart(u.auto.Value, exe)
+		}
 	}
 	if u.split.Update(gtx) {
-		_ = core.SaveSplit(u.split.Value)
-		if u.live && u.admin && !u.busy {
-			u.status = "маршрут"
-			u.startConnect()
+		if u.engine != nil {
+			go func() { _, _ = u.engine.SetSplit(u.split.Value) }()
+		} else {
+			_ = core.SaveSplit(u.split.Value)
+			if u.live && u.admin && !u.busy {
+				u.status = "маршрут"
+				u.startConnect()
+			}
 		}
 	}
 	if u.elevate.Clicked(gtx) && !u.admin {
@@ -207,6 +270,17 @@ func (u *ui) startConnect() {
 }
 
 func (u *ui) doConnect(src string, auto bool) {
+	if u.engine != nil {
+		if _, err := u.engine.Connect(src, auto); err != nil {
+			u.err = err.Error()
+			u.status = "ошибка"
+			u.busy = false
+			u.w.Invalidate()
+			return
+		}
+		u.pullState()
+		return
+	}
 	s, err := core.Connect(src)
 	if err != nil {
 		u.live = false
@@ -238,6 +312,11 @@ func (u *ui) doConnect(src string, auto bool) {
 }
 
 func (u *ui) doDisconnect() {
+	if u.engine != nil {
+		_, _ = u.engine.Disconnect()
+		u.pullState()
+		return
+	}
 	_ = core.Disconnect()
 	u.live = false
 	u.status = "ожидание"
@@ -249,6 +328,20 @@ func (u *ui) doDisconnect() {
 }
 
 func (u *ui) checkUpdate(manual bool) {
+	if u.engine != nil {
+		s, err := u.engine.CheckUpdate()
+		u.updBusy = false
+		if err != nil {
+			if manual {
+				u.updNote = err.Error()
+			}
+			u.w.Invalidate()
+			return
+		}
+		u.applySnap(s)
+		u.w.Invalidate()
+		return
+	}
 	upd, err := core.CheckLatest()
 	u.updBusy = false
 	if err != nil {
@@ -272,6 +365,12 @@ func (u *ui) checkUpdate(manual bool) {
 }
 
 func (u *ui) applyUpdate() {
+	if u.engine != nil {
+		_, _ = u.engine.ApplyUpdate()
+		u.updNote = "запускаю установщик — Ply закроется"
+		u.w.Invalidate()
+		return
+	}
 	if u.upd == nil || u.upd.SetupURL == "" {
 		u.updBusy = false
 		u.updNote = "нет ссылки на установщик"
@@ -453,7 +552,7 @@ func (u *ui) layoutHeader(gtx layout.Context) layout.Dimensions {
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			t := material.Body2(u.th, "Windows VPN. Paper, vless, hy2, vmess, trojan или ss. Туннель, не системный прокси.")
+			t := material.Body2(u.th, "Windows VPN. Paper, vless, hy2, vmess, trojan или ss. Окно можно закрыть — ядро держит туннель.")
 			t.Color = plyui.Muted
 			return t.Layout(gtx)
 		}),
@@ -656,7 +755,7 @@ func (u *ui) layoutUpdate(gtx layout.Context) layout.Dimensions {
 }
 
 func (u *ui) layoutFooter(gtx layout.Context) layout.Dimensions {
-	hint := "Ply  ·  v" + core.Version + "  ·  крестик в трей"
+	hint := "Ply  ·  v" + core.Version + "  ·  крестик закрывает окно, ядро в трее"
 	if runtime.GOOS != "windows" {
 		hint = "Ply  ·  v" + core.Version
 	}

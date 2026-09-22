@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const UA = "Ply/1.8"
+const UA = "Ply/1.9"
 
 type Node struct {
 	Proto    string

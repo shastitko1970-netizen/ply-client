@@ -9,6 +9,7 @@ import (
 )
 
 var instanceMutex windows.Handle
+var coreMutex windows.Handle
 
 func SetAppID() {
 	s, err := windows.UTF16PtrFromString(AppUserModelID)
@@ -18,12 +19,12 @@ func SetAppID() {
 	_, _, _ = windows.NewLazySystemDLL("shell32.dll").NewProc("SetCurrentProcessExplicitAppUserModelID").Call(uintptr(unsafe.Pointer(s)))
 }
 
-func AcquireInstance() bool {
-	name, err := windows.UTF16PtrFromString("Global\\PlyVPN")
+func acquireNamed(name string, slot *windows.Handle) bool {
+	n, err := windows.UTF16PtrFromString(name)
 	if err != nil {
 		return true
 	}
-	h, err := windows.CreateMutex(nil, false, name)
+	h, err := windows.CreateMutex(nil, false, n)
 	if err == windows.ERROR_ALREADY_EXISTS {
 		if h != 0 {
 			windows.CloseHandle(h)
@@ -33,8 +34,16 @@ func AcquireInstance() bool {
 	if err != nil && h == 0 {
 		return true
 	}
-	instanceMutex = h
+	*slot = h
 	return true
+}
+
+func AcquireInstance() bool {
+	return acquireNamed("Global\\PlyVPN.UI", &instanceMutex)
+}
+
+func AcquireCoreInstance() bool {
+	return acquireNamed("Global\\PlyVPN.Core", &coreMutex)
 }
 
 func ActivateExisting() {

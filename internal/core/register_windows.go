@@ -44,7 +44,7 @@ func WriteVersionFile(dir string) error {
 }
 
 func StopPlyProcesses() {
-	for _, name := range []string{"Ply.exe", "xray.exe"} {
+	for _, name := range []string{"Ply.exe", "PlyCore.exe", "xray.exe"} {
 		cmd := exec.Command("taskkill", "/F", "/IM", name, "/T")
 		tuneCmd(cmd)
 		_ = cmd.Run()
@@ -101,6 +101,7 @@ func WriteUninstall(dir string) error {
 	body := "@echo off\r\n" +
 		"schtasks /Delete /TN Ply /F >nul 2>&1\r\n" +
 		"taskkill /F /IM Ply.exe /T >nul 2>&1\r\n" +
+		"taskkill /F /IM PlyCore.exe /T >nul 2>&1\r\n" +
 		"taskkill /F /IM xray.exe /T >nul 2>&1\r\n" +
 		"reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Ply\" /f >nul 2>&1\r\n" +
 		"reg delete \"HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Ply\" /f >nul 2>&1\r\n" +
@@ -142,6 +143,7 @@ func RemoveLegacyStartFolder() {
 	old := LegacyInstallDir()
 	if old != DefaultInstallDir() {
 		_ = os.Remove(filepath.Join(old, "Ply.exe"))
+		_ = os.Remove(filepath.Join(old, "PlyCore.exe"))
 		_ = os.Remove(filepath.Join(old, "xray.exe"))
 	}
 }

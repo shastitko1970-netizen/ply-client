@@ -161,11 +161,16 @@ func (u *ui) doInstall() {
 		return
 	}
 	ply := filepath.Join(u.dest, "Ply.exe")
+	coreExe := filepath.Join(u.dest, "PlyCore.exe")
 	xray := filepath.Join(u.dest, "xray.exe")
 	wintun := filepath.Join(u.dest, "wintun.dll")
 	geosite := filepath.Join(u.dest, "geosite.dat")
 	if _, err := os.Stat(ply); err != nil {
 		u.fail("в пакете нет Ply.exe")
+		return
+	}
+	if _, err := os.Stat(coreExe); err != nil {
+		u.fail("в пакете нет PlyCore.exe — без ядра окно нечем кормить")
 		return
 	}
 	if _, err := os.Stat(xray); err != nil {
@@ -187,7 +192,7 @@ func (u *ui) doInstall() {
 		"1. Ply стоит в Program Files. Ищи «Ply» в меню Пуск или на рабочем столе.\r\n" +
 		"2. Согласись на права администратора.\r\n" +
 		"3. Вставь ключ (Paper / vless / hy2 / vmess / trojan / ss), нажми кнопку питания.\r\n" +
-		"4. Крестик сворачивает в трей — туннель живой. Выход только из значка у часов.\r\n" +
+		"4. Крестик закрывает окно. Ядро PlyCore остаётся в трее — туннель живой.\r\n" +
 		"5. «Россия мимо» — .ru и российские сервисы без VPN.\r\n" +
 		"6. Новые версии Ply скачает сама.\r\n\r\n" +
 		"Happ и приложение Paper выключи.\r\n" +
@@ -204,6 +209,7 @@ func (u *ui) doInstall() {
 		return
 	}
 	core.AllowFirewall(ply)
+	core.AllowFirewall(coreExe)
 	core.AllowFirewall(xray)
 	core.RemoveLegacyStartFolder()
 
@@ -218,7 +224,7 @@ func (u *ui) doInstall() {
 		}
 	}
 	if u.auto.Value {
-		if err := core.SetAutoStart(true, ply); err != nil {
+		if err := core.SetAutoStart(true, coreExe); err != nil {
 			u.fail(err.Error())
 			return
 		}
@@ -247,7 +253,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				line := "Ядро Xray ставится само. Go качать не надо."
+				line := "Окно отдельно, ядро PlyCore держит туннель. Go качать не надо."
 				if u.oldVer != "" && u.oldVer != core.Version {
 					line = "Обновление " + u.oldVer + " → " + core.Version + ". Ссылка Paper останется."
 				}
@@ -315,7 +321,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				if u.stage != stepDone {
 					return layout.Dimensions{}
 				}
-				t := material.Body2(u.th, "Ply в Program Files и в меню Пуск.\nЗапусти, кнопка питания — VPN, крестик — в трей.")
+				t := material.Body2(u.th, "Ply в Program Files и в меню Пуск.\nЗапусти окно. Крестик его закрывает — ядро с VPN остаётся у часов.")
 				t.Color = plyui.Ok
 				return t.Layout(gtx)
 			}),

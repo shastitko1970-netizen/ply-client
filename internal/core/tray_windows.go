@@ -123,15 +123,11 @@ func HideToTray() {
 
 func ShowFromTray() {
 	h := FindPlyHWND()
-	if h == 0 {
-		h = trayHWND
-	}
 	if h != 0 {
 		showWindow(h, swRestore)
 		showWindow(h, swShow)
 		setForeground(h)
-	}
-	if trayHooks.OnShow != nil {
+	} else if trayHooks.OnShow != nil {
 		trayHooks.OnShow()
 	}
 	if trayHooks.Invalidate != nil {
@@ -141,9 +137,9 @@ func ShowFromTray() {
 
 func RequestQuit() {
 	wantQuit.Store(true)
-	h := FindPlyHWND()
+	h := trayHWND
 	if h == 0 {
-		h = trayHWND
+		h = FindPlyHWND()
 	}
 	if h != 0 {
 		_, _, _ = procPostMessage.Call(uintptr(h), wmClose, 0, 0)
@@ -151,10 +147,13 @@ func RequestQuit() {
 }
 
 func AttachTray(hooks TrayHooks) bool {
+	return AttachTrayTo(FindPlyHWND(), hooks)
+}
+
+func AttachTrayTo(hwnd windows.HWND, hooks TrayHooks) bool {
 	if trayReady.Load() {
 		return true
 	}
-	hwnd := FindPlyHWND()
 	if hwnd == 0 {
 		return false
 	}
@@ -227,9 +226,11 @@ func traySubclass(hwnd, msg, wparam, lparam uintptr) uintptr {
 	switch msg {
 	case wmClose:
 		if !wantQuit.Load() {
-			showWindow(windows.HWND(hwnd), swHide)
-			if hidOnce.CompareAndSwap(false, true) {
-				TrayBalloon("Ply", "Свёрнут в трей. Туннель не гаснет.")
+			if h := FindPlyHWND(); h != 0 {
+				showWindow(h, swHide)
+				if hidOnce.CompareAndSwap(false, true) {
+					TrayBalloon("Ply", "Окно закрыто. Туннель живой. Выход — из значка у часов.")
+				}
 			}
 			return 0
 		}
