@@ -263,6 +263,9 @@ func startWatchdog() {
 		defer close(done)
 		t := time.NewTicker(4 * time.Second)
 		defer t.Stop()
+		failStreak := 0
+		var nextTry time.Time
+		routeTick := 0
 		for {
 			select {
 			case <-ch:
@@ -273,20 +276,28 @@ func startWatchdog() {
 					alive = alive && PlyAdapterUp()
 				}
 				if alive {
-					if runtime.GOOS == "windows" && lastServerIP != "" && !DefaultViaPly() {
+					failStreak = 0
+					routeTick++
+					if runtime.GOOS == "windows" && lastServerIP != "" && !DefaultViaPly() && routeTick%3 == 0 {
 						_ = ApplyTunRoutes(lastServerIP)
 					}
 					continue
 				}
-				if lastBin == "" || lastCfg == "" {
+				if lastBin == "" || lastCfg == "" || time.Now().Before(nextTry) {
 					continue
 				}
 				killXrayProc()
 				time.Sleep(200 * time.Millisecond)
-				_ = StartXray(lastBin, lastCfg)
-				if WaitPort(LocalPort, 4*time.Second) != nil {
+				if err := StartXray(lastBin, lastCfg); err != nil || WaitPort(LocalPort, 4*time.Second) != nil {
+					failStreak++
+					wait := time.Duration(4<<min(failStreak, 4)) * time.Second
+					if wait > 60*time.Second {
+						wait = 60 * time.Second
+					}
+					nextTry = time.Now().Add(wait)
 					continue
 				}
+				failStreak = 0
 				if runtime.GOOS == "windows" && WaitPlyAdapter(6*time.Second) && lastServerIP != "" {
 					_ = ApplyTunRoutes(lastServerIP)
 				}
@@ -323,7 +334,7 @@ func Connect(source string) (*Session, error) {
 		return nil, err
 	}
 	split := ReadSplit()
-	cfg, err := RenderXray(n, LocalPort, split)
+	cfg, err := RenderXrayTun(n, LocalPort, split, -1, EffectiveMTU())
 	if err != nil {
 		return nil, err
 	}

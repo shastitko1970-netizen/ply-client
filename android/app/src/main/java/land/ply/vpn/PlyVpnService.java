@@ -25,6 +25,8 @@ public class PlyVpnService extends VpnService {
         startForeground(1, note());
         String url = intent != null ? intent.getStringExtra(MainActivity.EXTRA_URL) : "";
         boolean split = intent == null || intent.getBooleanExtra(MainActivity.EXTRA_SPLIT, true);
+        int mtu = intent != null ? intent.getIntExtra(MainActivity.EXTRA_MTU, 1400) : 1400;
+        if (mtu != 1280 && mtu != 1400 && mtu != 1500) mtu = 1400;
         try {
             stopTunnel();
             File dir = new File(getFilesDir(), "xray");
@@ -34,7 +36,7 @@ public class PlyVpnService extends VpnService {
             copyAsset("geosite.dat", new File(dir, "geosite.dat"));
             Builder b = new Builder();
             b.setSession("Ply");
-            b.setMtu(1400);
+            b.setMtu(mtu);
             b.addAddress("198.18.0.1", 16);
             b.addDnsServer("1.1.1.1");
             b.addRoute("0.0.0.0", 1);
@@ -52,6 +54,7 @@ public class PlyVpnService extends VpnService {
                 "-url", url == null ? "" : url,
                 "-split=" + (split ? "true" : "false"),
                 "-fd", String.valueOf(tun.getFd()),
+                "-mtu", String.valueOf(mtu),
                 "-out", cfg.getAbsolutePath()
             );
             gen.directory(dir);

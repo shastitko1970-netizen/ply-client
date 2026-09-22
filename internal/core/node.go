@@ -146,10 +146,13 @@ func Resolve(source string) (*Node, error) {
 }
 
 func RenderXray(n *Node, port int, split bool) ([]byte, error) {
-	return RenderXrayTun(n, port, split, -1)
+	return RenderXrayTun(n, port, split, -1, 0)
 }
 
-func RenderXrayTun(n *Node, port int, split bool, tunFD int) ([]byte, error) {
+func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error) {
+	if mtu == 0 {
+		mtu = EffectiveMTU()
+	}
 	rules := []any{}
 	if ip := net.ParseIP(n.Host); ip != nil {
 		rules = append(rules, map[string]any{"type": "field", "ip": []string{n.Host}, "outboundTag": "direct"})
@@ -197,7 +200,7 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD int) ([]byte, error) {
 			map[string]any{
 				"tag":      "tun",
 				"protocol": "tun",
-				"settings": tunSettings(tunFD),
+				"settings": tunSettings(tunFD, mtu),
 				"sniffing": map[string]any{
 					"enabled":      true,
 					"destOverride": []string{"http", "tls"},
@@ -234,11 +237,14 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD int) ([]byte, error) {
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
-func tunSettings(fd int) map[string]any {
+func tunSettings(fd, mtu int) map[string]any {
+	if mtu != 1280 && mtu != 1400 && mtu != 1500 {
+		mtu = 1400
+	}
 	s := map[string]any{
 		"name": "ply0",
 		"desc": "Ply",
-		"mtu":  1400,
+		"mtu":  mtu,
 	}
 	if fd >= 0 {
 		s["fd"] = fd
@@ -339,6 +345,16 @@ func (n *Node) outbound() map[string]any {
 	}
 }
 
+func mssFor(mtu int) int {
+	if mtu == 1280 {
+		return 1240
+	}
+	if mtu == 1500 {
+		return 1460
+	}
+	return 1360
+}
+
 func (n *Node) streamSettings() map[string]any {
 	netw := n.Network
 	if netw == "tcp" || netw == "" {
@@ -387,7 +403,7 @@ func (n *Node) streamSettings() map[string]any {
 	ss["sockopt"] = map[string]any{
 		"tcpNoDelay":       true,
 		"tcpKeepAliveIdle": 30,
-		"tcpMaxSeg":        1360,
+		"tcpMaxSeg":        mssFor(EffectiveMTU()),
 		"domainStrategy":   "UseIPv4",
 	}
 

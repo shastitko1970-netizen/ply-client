@@ -1,38 +1,24 @@
-# Ply
+# Ply 2.0
 
-VPN. Вставила ключ — туннель встал. Не Happ. Не v2rayN.
+VPN-клиент. Вставила ключ — туннель встал.
 
-Два процесса: **окно** и **ядро**. Окно — тот же HTML, что сайт. Крестик закрывает окно — **PlyCore** остаётся и держит туннель.
+Ключи: **vless://**, **hy2://**, **vmess://**, **trojan://**, **ss://** и https-подписка. Один слой, mux выключен. Сайты РФ можно пустить напрямую. В памяти одно ядро — Xray. Второе не качаем и не держим рядом.
 
-Понимает **Paper**, **vless://**, **hy2://** / **hysteria2://**, **vmess://**, **trojan://**, **ss://** и https-подписку. Mux выключен. Сайты РФ можно пустить напрямую.
+## Скачать 2.0.0
 
-TUIC Xray не умеет. Go качать не надо.
+Один релиз, все платформы: [github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.0](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.0)
 
-## Скачать
+- Windows: **Ply-2.0.0-win64.zip** → PlySetup.exe. Go качать не надо.
+- Linux: **Ply-2.0.0-linux-amd64.tar.gz** → `./install.sh` (Chromium и права на туннель сам).
+- macOS: **Ply-2.0.0-macos.zip** → `install.command`, нужен Chrome или Edge.
+- Android: **Ply-2.0.0.apk**
 
-- Windows **1.10.7**: [Ply-1.10.7-win64.zip](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.7) — запусти **PlySetup.exe**
-- Linux **1.10.8** (тест): [Ply-1.10.8-linux-amd64.tar.gz](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.8) — `./install.sh`
-- macOS **1.10.9** (бета): [Ply-1.10.9-macos.zip](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.9)
-- Android **1.10.10** (бета): [Ply-1.10.10.apk](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.10)
+## Что нового
 
-## 1.10.7
+- Светлая, тёмная и системная тема, плотность окна
+- Тихий вход: ядро поднимается без окна, туннель в трее
+- MTU 1280 / 1400 / 1500
+- Если xray падает, повтор с паузой, а не каждые четыре секунды
+- Автозапуск больше не включается сам при каждом старте ядра
 
-- Компактное окно: ключ и тумблеры в одном блоке, лишнее спрятано в «подробнее»
-- «РФ напрямую» вместо кривого «Россия мимо»
-- Установщик по-прежнему без Go
-
-## 1.10.8
-
-- Linux: окно + ядро + xray, `install.sh` ставит Chromium и setcap
-
-## 1.10.9
-
-- macOS: Ply.app, та же логика
-
-## 1.10.10
-
-- Android: VpnService, ключ, РФ напрямую
-
-## 1.10.6
-
-- Туннель быстрее: MTU 1400, без лишнего DNS, Wi‑Fi больше не душат
+Крестик закрывает окно. Выход из VPN — из трея, на Linux и Mac кнопка «выйти из ядра».

@@ -13,6 +13,7 @@ func main() {
 	split := flag.Bool("split", true, "РФ напрямую")
 	out := flag.String("out", "", "config.json")
 	fd := flag.Int("fd", -1, "tun fd (Android)")
+	mtu := flag.Int("mtu", 0, "MTU 1280, 1400 или 1500")
 	flag.Parse()
 	src := *url
 	if src == "" && flag.NArg() > 0 {
@@ -27,7 +28,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	b, err := core.RenderXrayTun(n, core.LocalPort, *split, *fd)
+	b, err := core.RenderXrayTun(n, core.LocalPort, *split, *fd, *mtu)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

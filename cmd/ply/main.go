@@ -557,7 +557,7 @@ func (u *ui) layoutHeader(gtx layout.Context) layout.Dimensions {
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			t := material.Body2(u.th, "Ключ Paper, vless, hy2, vmess, trojan или ss.")
+			t := material.Body2(u.th, "vless, hy2, vmess, trojan, ss или ссылка подписки.")
 			t.Color = plyui.Muted
 			return t.Layout(gtx)
 		}),
@@ -643,7 +643,7 @@ func (u *ui) layoutURL(gtx layout.Context) layout.Dimensions {
 			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return plyui.Input(gtx, func(gtx layout.Context) layout.Dimensions {
-					ed := material.Editor(u.th, &u.url, "vless  hy2  vmess  trojan  ss  или Paper")
+					ed := material.Editor(u.th, &u.url, "vless  hy2  vmess  trojan  ss  или ссылка подписки")
 					ed.Color = plyui.Fg
 					ed.HintColor = plyui.Dim
 					ed.TextSize = 13
@@ -741,7 +741,7 @@ func (u *ui) layoutUpdate(gtx layout.Context) layout.Dimensions {
 				}),
 				layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					t := material.Caption(u.th, "можно поставить из приложения, ссылка Paper останется")
+					t := material.Caption(u.th, "можно поставить из самого Ply, ключ останется")
 					t.Color = plyui.Dim
 					return t.Layout(gtx)
 				}),

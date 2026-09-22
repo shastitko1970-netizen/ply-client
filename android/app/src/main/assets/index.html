@@ -1,11 +1,17 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="system">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <title>Ply</title>
 <style>
 :root{--bg:#0a0a0b;--panel:#121214;--fg:#f4f4f5;--muted:#a1a1aa;--dim:#71717a;--line:rgba(244,244,245,.12);--accent:#c8ccd4;--ink:#0a0a0b;--ok:#8aa38a;--err:#c17b7b;--ease:cubic-bezier(.23,1,.32,1)}
+html[data-theme="light"]{--bg:#f4f3ef;--panel:#fffcf7;--fg:#1c1b19;--muted:#5c5954;--dim:#8a847b;--line:rgba(28,27,25,.12);--accent:#1c1b19;--ink:#f7f6f2;--ok:#3f6b4a;--err:#8f3d3d}
+html[data-theme="light"] body,html[data-theme="light"] .field{background:var(--bg)}
+html[data-theme="light"] .field{background:#f7f6f2}
+.seg{display:flex;gap:4px;margin-top:8px}
+.seg button{flex:1;height:32px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:12px}
+.seg button.on{background:var(--accent);color:var(--ink);border-color:transparent}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--fg);font-family:-apple-system,"IBM Plex Sans","Segoe UI",sans-serif}
 body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom))}
 .head{display:flex;align-items:center;justify-content:space-between}
@@ -42,18 +48,46 @@ body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-are
 </div>
 <div class="card">
   <div class="k">Ключ</div>
-  <input id="url" class="field" placeholder="vless  hy2  vmess  trojan  ss  или Paper" spellcheck="false" autocomplete="off"/>
+  <input id="url" class="field" placeholder="vless  hy2  vmess  trojan  ss  или ссылка" spellcheck="false" autocomplete="off"/>
   <div class="sw">
     <div><div class="t">РФ напрямую</div><div class="s">Яндекс, VK и .ru без VPN</div></div>
     <button id="split" class="toggle on" type="button" aria-label="РФ напрямую"><i></i></button>
   </div>
+  <div class="k" style="margin-top:12px">Тема</div>
+  <div class="seg" id="themes">
+    <button type="button" data-v="system">система</button>
+    <button type="button" data-v="dark">тёмная</button>
+    <button type="button" data-v="light">светлая</button>
+  </div>
+  <div class="k" style="margin-top:10px">MTU</div>
+  <div class="seg" id="mtus">
+    <button type="button" data-v="1280">1280</button>
+    <button type="button" data-v="1400" class="on">1400</button>
+    <button type="button" data-v="1500">1500</button>
+  </div>
 </div>
 <p class="err" id="err" hidden></p>
 <script>
-let live=false;
+let live=false, mtu=1400;
 const $ = id => document.getElementById(id);
-try{ const u=localStorage.getItem("ply.url"); if(u) $("url").value=u; }catch(e){}
+function setTheme(t){
+  document.documentElement.dataset.theme = t || "system";
+  document.querySelectorAll("#themes button").forEach(b => b.classList.toggle("on", b.dataset.v===t));
+  try{ localStorage.setItem("ply.theme", t); }catch(e){}
+}
+try{
+  const u=localStorage.getItem("ply.url"); if(u) $("url").value=u;
+  const t=localStorage.getItem("ply.theme")||"system"; setTheme(t);
+  const m=Number(localStorage.getItem("ply.mtu")||"1400"); if(m===1280||m===1400||m===1500) mtu=m;
+  document.querySelectorAll("#mtus button").forEach(b => b.classList.toggle("on", Number(b.dataset.v)===mtu));
+}catch(e){}
 $("split").onclick = () => $("split").classList.toggle("on");
+document.querySelectorAll("#themes button").forEach(b => b.onclick = () => setTheme(b.dataset.v));
+document.querySelectorAll("#mtus button").forEach(b => b.onclick = () => {
+  mtu = Number(b.dataset.v);
+  document.querySelectorAll("#mtus button").forEach(x => x.classList.toggle("on", x===b));
+  try{ localStorage.setItem("ply.mtu", String(mtu)); }catch(e){}
+});
 $("power").onclick = () => {
   const url=$("url").value.trim();
   if (live){
@@ -64,11 +98,11 @@ $("power").onclick = () => {
     $("cap").textContent="Вставь ключ";
     return;
   }
-  if (!url){ $("err").hidden=false; $("err").textContent="Вставь ключ vless, hy2, vmess, trojan, ss или ссылку Paper"; return; }
+  if (!url){ $("err").hidden=false; $("err").textContent="Вставь ключ vless, hy2, vmess, trojan, ss или ссылку подписки"; return; }
   $("err").hidden=true;
   try{ localStorage.setItem("ply.url", url); }catch(e){}
   try{
-    PlyNative.connect(url, $("split").classList.contains("on"));
+    PlyNative.connect(url, $("split").classList.contains("on"), mtu);
     live=true;
     $("power").classList.add("ok");
     $("pill").className="pill ok"; $("pill").textContent="в сети";

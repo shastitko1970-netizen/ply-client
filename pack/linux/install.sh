@@ -56,7 +56,7 @@ ICON="$DEST/icon.png"
 cat > "$APPDIR/ply.desktop" <<EOF
 [Desktop Entry]
 Name=Ply
-Comment=VPN. Paper, vless, hy2, vmess, trojan, ss.
+Comment=VPN. vless, hy2, vmess, trojan, ss.
 Exec=$DEST/Ply
 Icon=$ICON
 Terminal=false
@@ -65,6 +65,16 @@ Categories=Network;
 StartupWMClass=Ply
 EOF
 chmod 644 "$APPDIR/ply.desktop"
+AUTO="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+mkdir -p "$AUTO"
+cat > "$AUTO/ply-core.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Ply
+Comment=Тихий вход, окно не открывается
+Exec=$DEST/PlyCore
+X-GNOME-Autostart-enabled=true
+EOF
 ln -sf "$DEST/Ply" "$HOME/.local/bin/ply"
 if need update-desktop-database; then
   update-desktop-database "$APPDIR" >/dev/null 2>&1 || true

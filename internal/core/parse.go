@@ -61,8 +61,13 @@ func splitRemark(raw string) (body, remark string) {
 	}
 	body = strings.TrimSpace(raw[:i])
 	rest := raw[i+1:]
-	if j := strings.Index(rest, "#"); j >= 0 {
-		rest = rest[:j]
+	if j := strings.LastIndex(rest, "#"); j >= 0 {
+		tail := strings.TrimSpace(rest[j+1:])
+		if tail != "" {
+			rest = tail
+		} else {
+			rest = rest[:j]
+		}
 	}
 	remark, err := url.QueryUnescape(rest)
 	if err != nil {

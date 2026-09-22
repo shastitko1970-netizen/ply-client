@@ -194,11 +194,11 @@ func (u *ui) doInstall() {
 		"КАК ЗАПУСТИТЬ\r\n" +
 		"1. Ply стоит в Program Files. Ищи «Ply» в меню Пуск или на рабочем столе.\r\n" +
 		"2. Окно без прав. UAC — только у ядра, потом значок у часов.\r\n" +
-		"3. Вставь ключ (Paper / vless / hy2 / vmess / trojan / ss), нажми кнопку питания.\r\n" +
+		"3. Вставь ключ (vless / hy2 / vmess / trojan / ss или ссылку подписки), нажми кнопку питания.\r\n" +
 		"4. Крестик закрывает окно. Ядро PlyCore остаётся в трее — туннель живой.\r\n" +
 		"5. «РФ напрямую» — Яндекс, VK и .ru без VPN.\r\n" +
 		"6. Новые версии Ply скачает сама.\r\n\r\n" +
-		"Happ и приложение Paper выключи.\r\n" +
+		"Другие VPN-клиенты выключи.\r\n" +
 		"Папка: " + u.dest + "\r\n"
 	_ = os.WriteFile(filepath.Join(u.dest, "README.txt"), []byte(readme), 0644)
 	_ = core.WriteUninstall(u.dest)
@@ -260,7 +260,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				line := "Окно отдельно, ядро держит туннель. Go качать не надо — всё уже внутри."
 				if u.oldVer != "" && u.oldVer != core.Version {
-					line = "Обновление " + u.oldVer + " → " + core.Version + ". Ссылка Paper останется."
+					line = "Обновление " + u.oldVer + " → " + core.Version + ". Ключ останется."
 				}
 				b := material.Body2(u.th, line)
 				b.Color = plyui.Muted

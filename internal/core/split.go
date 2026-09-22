@@ -1,10 +1,6 @@
 package core
 
-import (
-	"os"
-	"path/filepath"
-	"strings"
-)
+import "path/filepath"
 
 func splitPath() string {
 	dir, err := DataDir()
@@ -15,27 +11,16 @@ func splitPath() string {
 }
 
 func SaveSplit(on bool) error {
-	dir, err := DataDir()
-	if err != nil {
-		return err
-	}
-	v := "0"
-	if on {
-		v = "1"
-	}
-	return os.WriteFile(filepath.Join(dir, "split.txt"), []byte(v+"\n"), 0644)
+	p := LoadPrefs()
+	p.Split = on
+	return SavePrefs(p)
 }
 
 func ReadSplit() bool {
-	b, err := os.ReadFile(splitPath())
-	if err != nil {
-		return true
+	if p, ok := peekPrefs(); ok {
+		return p.Split
 	}
-	s := strings.ToLower(strings.TrimSpace(string(b)))
-	if s == "0" || s == "off" || s == "false" || s == "no" {
-		return false
-	}
-	return true
+	return readSplitFile()
 }
 
 func RussiaDirectDomains() []string {

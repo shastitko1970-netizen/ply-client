@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="system" data-density="compact">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -15,7 +15,28 @@
   --accent:#c8ccd4;--ink:#0a0a0b;--ok:#8aa38a;--err:#c17b7b;
   --ease:cubic-bezier(.23,1,.32,1);
   --radius:16px;
+  color-scheme:dark;
 }
+html[data-theme="light"]{
+  --bg:#f4f3ef;--panel:#fffcf7;--field:#f7f6f2;--subtle:#e7e5df;
+  --fg:#1c1b19;--muted:#5c5954;--dim:#8a847b;
+  --line:rgba(28,27,25,.12);--line2:rgba(28,27,25,.22);
+  --accent:#1c1b19;--ink:#f7f6f2;--ok:#3f6b4a;--err:#8f3d3d;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: light){
+  html[data-theme="system"]{
+    --bg:#f4f3ef;--panel:#fffcf7;--field:#f7f6f2;--subtle:#e7e5df;
+    --fg:#1c1b19;--muted:#5c5954;--dim:#8a847b;
+    --line:rgba(28,27,25,.12);--line2:rgba(28,27,25,.22);
+    --accent:#1c1b19;--ink:#f7f6f2;--ok:#3f6b4a;--err:#8f3d3d;
+    color-scheme:light;
+  }
+}
+html[data-density="roomy"] .card{padding:14px 16px}
+html[data-density="roomy"] .power{width:84px;height:84px}
+html[data-density="roomy"] .main{grid-template-columns:5.4rem minmax(0,1fr);gap:18px}
+html[data-theme="light"] .power.ok{background:#e7f0e8;box-shadow:0 0 0 4px rgba(63,107,74,.12)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 ::selection{background:rgba(200,204,212,.28)}
@@ -83,6 +104,13 @@ details[open] summary::after{content:" скрыть"}
 .foot{flex-shrink:0;margin-top:6px;text-align:center;font-size:11px;color:var(--dim)}
 .quiet{margin:2px auto 0;border:0;background:transparent;color:var(--dim);font-size:11px;min-height:26px;transition:color .15s var(--ease)}
 .quiet:hover{color:var(--fg)}
+.iconbtn{width:32px;height:32px;border:0;border-radius:10px;background:transparent;color:var(--dim);display:grid;place-items:center}
+.iconbtn:hover{background:var(--subtle);color:var(--fg)}
+.seg{display:flex;gap:4px;margin-top:8px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{flex:1;height:28px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:12px}
+.seg button.on{background:var(--accent);color:var(--ink)}
+.lookbody{margin-top:8px}
+.note{margin:8px 0 0;font-size:11px;line-height:1.4;color:var(--dim)}
 .spin{width:22px;height:22px;border:2px solid var(--line2);border-top-color:var(--muted);border-radius:50%;animation:rot .8s linear infinite}
 .livebox{border-top:1px solid var(--line);margin-top:8px;padding-top:8px;animation:rise .28s var(--ease) both}
 @keyframes rot{to{transform:rotate(360deg)}}
@@ -115,7 +143,12 @@ details[open] summary::after{content:" скрыть"}
   <div class="body">
   <header class="head">
     <div class="brand">Ply</div>
-    <div id="pill" class="pill">выкл</div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+      <button id="gear" class="iconbtn" type="button" aria-label="Внешний вид">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg>
+      </button>
+      <div id="pill" class="pill">выкл</div>
+    </div>
   </header>
   <div class="main">
     <aside class="hero">
@@ -129,7 +162,7 @@ details[open] summary::after{content:" скрыть"}
     <div class="stack">
       <section class="card">
         <div class="k">Ключ</div>
-        <input id="url" class="field" spellcheck="false" autocomplete="off" placeholder="vless  hy2  vmess  trojan  ss  или Paper"/>
+        <input id="url" class="field" spellcheck="false" autocomplete="off" placeholder="vless  hy2  vmess  trojan  ss  или ссылка подписки"/>
         <div class="sw">
           <div>
             <div class="t">РФ напрямую</div>
@@ -162,6 +195,34 @@ details[open] summary::after{content:" скрыть"}
             </div>
             <button id="refresh" class="btn ghost" type="button" style="margin-top:8px">Обновить ключ</button>
           </details>
+        </div>
+      </section>
+      <section class="card" id="look">
+        <button id="lookbtn" class="k" type="button" style="background:none;border:0;padding:0;color:var(--dim)">Внешний вид</button>
+        <div id="lookbody" class="lookbody" hidden>
+          <div class="seg" id="themes">
+            <button type="button" data-v="system">система</button>
+            <button type="button" data-v="dark">тёмная</button>
+            <button type="button" data-v="light">светлая</button>
+          </div>
+          <div class="seg" id="dens" style="margin-top:6px">
+            <button type="button" data-v="compact">компактно</button>
+            <button type="button" data-v="roomy">свободнее</button>
+          </div>
+          <div class="sw">
+            <div>
+              <div class="t">Тихий вход</div>
+              <div class="s">ядро без окна, туннель сам</div>
+            </div>
+            <button id="silent" class="toggle on" type="button" aria-label="Тихий вход"><i></i></button>
+          </div>
+          <div class="k" style="margin-top:4px">MTU</div>
+          <div class="seg" id="mtus">
+            <button type="button" data-v="1280">1280</button>
+            <button type="button" data-v="1400">1400</button>
+            <button type="button" data-v="1500">1500</button>
+          </div>
+          <p class="note">Ядро — Xray, одно в памяти. Второе не качаем и не держим рядом: смена была бы только после остановки текущего.</p>
         </div>
       </section>
       <section id="errbox" class="card" hidden><p id="err" class="alert"></p></section>
@@ -254,7 +315,9 @@ function paint(s){
   setToggle($("auto"), snap.auto !== false);
   const ac = autoCopy(plat);
   $("autolbl").textContent = ac[0];
-  $("autosub").textContent = ac[1];
+  const pref = snap.prefs || {};
+  $("autosub").textContent = pref.silent !== false ? "тихо, окно не всплывает" : ac[1];
+  applyLook(pref);
   $("errbox").hidden = !err;
   $("err").textContent = err;
   $("adminbox").hidden = !!snap.admin || live;
@@ -313,7 +376,34 @@ document.querySelector(".chrome").addEventListener("mousedown", (e) => {
   if (e.target.closest(".btns")) return;
   try { plyWin("drag"); } catch (err) {}
 });
-setInterval(pull, 400);
+function applyLook(p){
+  const theme = p.theme || "system";
+  const density = p.density || "compact";
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.density = density;
+  markSeg("themes", theme);
+  markSeg("dens", density);
+  markSeg("mtus", String(p.mtu || 1400));
+  if ($("silent")) setToggle($("silent"), p.silent !== false);
+}
+function markSeg(id, v){
+  const root = $(id);
+  if (!root) return;
+  root.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === String(v)));
+}
+async function pushPrefs(patch){
+  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false}, snap.prefs || {}, patch);
+  try { paint(await api("/v1/prefs", base)); }
+  catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+}
+function toggleLook(){ $("lookbody").hidden = !$("lookbody").hidden; }
+$("gear").onclick = toggleLook;
+$("lookbtn").onclick = toggleLook;
+document.querySelectorAll("#themes button").forEach((b) => { b.onclick = () => pushPrefs({theme:b.dataset.v}); });
+document.querySelectorAll("#dens button").forEach((b) => { b.onclick = () => pushPrefs({density:b.dataset.v}); });
+document.querySelectorAll("#mtus button").forEach((b) => { b.onclick = () => pushPrefs({mtu:Number(b.dataset.v)}); });
+$("silent").onclick = () => pushPrefs({silent: !$("silent").classList.contains("on")});
+setInterval(pull, 900);
 pull();
 </script>
 </body>

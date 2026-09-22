@@ -150,7 +150,12 @@ func RemoveLegacyStartFolder() {
 
 func SetLogonTask(enable bool, exe string) error {
 	if enable {
-		cmd := exec.Command("schtasks", "/Create", "/TN", "Ply", "/TR", `"`+exe+`"`, "/SC", "ONLOGON", "/RL", "HIGHEST", "/F")
+		rl := "HIGHEST"
+		low := strings.ToLower(exe)
+		if strings.HasSuffix(low, `\ply.exe`) || strings.HasSuffix(low, `/ply.exe`) {
+			rl = "LIMITED"
+		}
+		cmd := exec.Command("schtasks", "/Create", "/TN", "Ply", "/TR", `"`+exe+`"`, "/SC", "ONLOGON", "/RL", rl, "/F")
 		tuneCmd(cmd)
 		out, err := cmd.CombinedOutput()
 		if err != nil {

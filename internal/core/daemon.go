@@ -32,6 +32,8 @@ type Snapshot struct {
 	URL     string  `json:"url"`
 	Split   bool    `json:"split"`
 	Auto    bool    `json:"auto"`
+	Prefs   Prefs   `json:"prefs"`
+	Cores   []CoreSlot `json:"cores,omitempty"`
 	Node    *Node   `json:"node,omitempty"`
 	Update  *Update `json:"update,omitempty"`
 	UpdNote string  `json:"updNote,omitempty"`
@@ -112,7 +114,11 @@ func currentSnap() Snapshot {
 	s.Platform = runtime.GOOS
 	s.Admin = IsAdmin()
 	s.URL = ReadURL()
-	s.Split = ReadSplit()
+	p := LoadPrefs()
+	s.Split = p.Split
+	s.Auto = p.Auto
+	s.Prefs = p
+	s.Cores = CoreCatalog()
 	if s.Status == "" {
 		s.Status = "ожидание"
 	}
@@ -174,9 +180,46 @@ func daemonMux(token string) http.Handler {
 			On bool `json:"on"`
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
-		exe, _ := os.Executable()
-		_ = SetAutoStart(body.On, exe)
+		exe := autostartTarget()
+		if err := SetAutoStart(body.On, exe); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		p := LoadPrefs()
+		p.Auto = body.On
+		_ = SavePrefs(p)
 		setSnap(func(s *Snapshot) { s.Auto = body.On })
+		writeJSON(w, currentSnap())
+	})
+	mux.HandleFunc("/v1/prefs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		var body Prefs
+		_ = json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&body)
+		prev := LoadPrefs()
+		if err := UseCore(body.Core); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		body.Core = "xray"
+		if err := SavePrefs(body); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		next := LoadPrefs()
+		if next.Auto != prev.Auto || next.Silent != prev.Silent {
+			_ = SetAutoStart(next.Auto, autostartTarget())
+		}
+		setSnap(func(s *Snapshot) {
+			s.Split = next.Split
+			s.Auto = next.Auto
+			s.Prefs = next
+		})
+		if currentSnap().Live && (next.MTU != prev.MTU || next.Split != prev.Split) {
+			go daemonConnect(ReadURL(), false)
+		}
 		writeJSON(w, currentSnap())
 	})
 	mux.HandleFunc("/v1/refresh", func(w http.ResponseWriter, r *http.Request) {
@@ -268,11 +311,14 @@ func EngineDisconnect() {
 }
 
 func BootSaved() {
+	if !LoadPrefs().Auto {
+		return
+	}
 	u := strings.TrimSpace(ReadURL())
 	if u == "" {
 		return
 	}
-	daemonConnect(u, true)
+	daemonConnect(u, false)
 }
 
 var connectMu sync.Mutex
@@ -318,8 +364,10 @@ func daemonConnect(src string, auto bool) {
 		}
 	})
 	if auto {
-		exe, _ := os.Executable()
-		_ = SetAutoStart(true, exe)
+		p := LoadPrefs()
+		p.Auto = true
+		_ = SavePrefs(p)
+		_ = SetAutoStart(true, autostartTarget())
 	}
 	go daemonCheckUpdate(false)
 }

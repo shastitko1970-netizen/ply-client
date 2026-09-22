@@ -316,7 +316,7 @@ func TestRenderXrayTunFD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := RenderXrayTun(n, 10808, true, 7)
+	b, err := RenderXrayTun(n, 10808, true, 7, 1400)
 	if err != nil {
 		t.Fatal(err)
 	}
