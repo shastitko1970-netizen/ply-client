@@ -109,6 +109,29 @@ func winClose(hwnd uintptr) {
 	_, _, _ = procPostMessage.Call(hwnd, wmClose, 0, 0)
 }
 
+func systemDPI() uint32 {
+	p, _, _ := user32.NewProc("GetDpiForSystem").Call()
+	if p == 0 {
+		return 96
+	}
+	return uint32(p)
+}
+
+func dip(n int) int {
+	d := systemDPI()
+	if d < 96 {
+		d = 96
+	}
+	return int(uint32(n) * d / 96)
+}
+
+func setOuterSize(hwnd uintptr, w, h int) {
+	if hwnd == 0 || w <= 0 || h <= 0 {
+		return
+	}
+	_, _, _ = procSetWindowPos.Call(hwnd, 0, 0, 0, uintptr(w), uintptr(h), swpNoMove|swpNoZOrder|swpFrameChanged)
+}
+
 func coInitSTA() {
 	ole32 := windows.NewLazySystemDLL("ole32.dll")
 	_, _, _ = ole32.NewProc("CoInitializeEx").Call(0, 2)

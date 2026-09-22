@@ -10,17 +10,20 @@ TUIC Xray не умеет.
 
 ## Скачать
 
-Релиз **1.10.2**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.2](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.2)
+Релиз **1.10.3**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.3](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.3)
 
-1. Скачай **Ply-1.10.2-win64.zip**, запусти **PlySetup.exe**
+1. Скачай **Ply-1.10.3-win64.zip**, запусти **PlySetup.exe**
 2. Окно без прав. UAC — только у ядра, потом значок у часов
 3. С 1.3+ можно обновить из самого Ply
 4. Крестик = окно спит. Выход из VPN — только из трея
 
+## 1.10.3
+
+- Нормальный размер окна с учётом масштаба Windows, блоки сразу
+
 ## 1.10.2
 
 - Окно сразу HTML-блоками, без виндовой шапки и без системного скролла
-- Кэш Edge в AppData, Ply.exe без админа
 
 ## 1.10.1
 
@@ -31,8 +34,3 @@ TUIC Xray не умеет.
 
 - Лаунчер как сайт: WebView2, те же шрифты и блоки
 - Крестик не гасит туннель
-
-## 1.9.0
-
-- Окно и ядро разделены. Закрыла окно — туннель живой
-- Автозапуск поднимает PlyCore без окна

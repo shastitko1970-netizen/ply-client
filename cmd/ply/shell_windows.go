@@ -39,8 +39,9 @@ func openWebShell() bool {
 		}
 		return nil
 	})
-	w.SetSize(860, 560, webview2.HintMin)
+	w.SetSize(dip(980), dip(640), webview2.HintMin)
 	dressWindow(hwnd)
+	setOuterSize(hwnd, dip(1080), dip(720))
 	w.SetHtml(bootHTML)
 	go func() {
 		d, err := core.EnsureWorker()
@@ -64,8 +65,8 @@ func makeView(data string) webview2.WebView {
 		DataPath:  data,
 		WindowOptions: webview2.WindowOptions{
 			Title:  core.WindowTitle,
-			Width:  980,
-			Height: 660,
+			Width:  uint(dip(1080)),
+			Height: uint(dip(720)),
 			Center: true,
 		},
 	})
