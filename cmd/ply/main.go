@@ -63,6 +63,9 @@ func main() {
 		core.ActivateExisting()
 		os.Exit(0)
 	}
+	if openWebShell() {
+		os.Exit(0)
+	}
 	go func() {
 		w := new(app.Window)
 		w.Option(

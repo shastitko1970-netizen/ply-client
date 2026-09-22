@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Ply — VPN</title>
+<style>
+@font-face{font-family:Newsreader;font-style:italic;font-weight:500;src:url("/fonts/Newsreader-Italic.ttf") format("truetype")}
+@font-face{font-family:"IBM Plex Sans";font-style:normal;font-weight:400;src:url("/fonts/IBMPlexSans-Regular.ttf") format("truetype")}
+@font-face{font-family:"IBM Plex Sans";font-style:normal;font-weight:500;src:url("/fonts/IBMPlexSans-Medium.ttf") format("truetype")}
+:root{
+  --bg:#0a0a0b;--panel:#121214;--field:#0c0c0e;--subtle:#1a1a1e;
+  --fg:#f4f4f5;--muted:#a1a1aa;--dim:#71717a;
+  --line:rgba(244,244,245,.12);--line2:rgba(244,244,245,.22);
+  --accent:#c8ccd4;--ink:#0a0a0b;--ok:#8aa38a;--err:#c17b7b;
+  --ease:cubic-bezier(.23,1,.32,1);
+  --radius:24px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(200,204,212,.28)}
+button{cursor:pointer;font:inherit}
+button:disabled{cursor:default;opacity:.45}
+.wrap{height:100%;display:flex;flex-direction:column;padding:22px 24px 16px;overflow:hidden}
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-shrink:0}
+.brand{font-family:Newsreader,"Times New Roman",serif;font-style:italic;font-weight:500;font-size:34px;line-height:1;letter-spacing:-.02em}
+.sub{margin-top:8px;max-width:22rem;font-size:13px;line-height:1.45;color:var(--muted)}
+.pill{flex-shrink:0;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:500;background:var(--subtle);color:var(--muted)}
+.pill.ok{background:rgba(138,163,138,.16);color:var(--ok)}
+.pill.err{background:rgba(193,123,123,.16);color:var(--err)}
+.main{flex:1;min-height:0;margin-top:22px;display:grid;grid-template-columns:15.5rem minmax(0,1fr);gap:28px;align-items:stretch}
+.hero{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.cards{min-width:0;overflow:auto;padding-right:4px;display:flex;flex-direction:column;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+.display{font-family:Newsreader,"Times New Roman",serif;font-style:italic;font-weight:500;font-size:20px;line-height:1.15;letter-spacing:-.02em}
+.k{font-size:14px;font-weight:500}
+.hint{margin-top:8px;font-size:12px;line-height:1.45;color:var(--dim)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sw .t{font-size:14px;font-weight:500}
+.sw .s{margin-top:4px;font-size:12px;color:var(--dim)}
+.toggle{position:relative;width:44px;height:24px;border:1px solid var(--line);border-radius:999px;background:var(--subtle);flex-shrink:0;transition:background .15s var(--ease),border-color .15s var(--ease)}
+.toggle.on{background:var(--accent);border-color:transparent}
+.toggle i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--fg);transition:transform .15s var(--ease),background .15s var(--ease)}
+.toggle.on i{transform:translateX(20px);background:var(--ink)}
+.field{margin-top:10px;height:44px;width:100%;border:1px solid var(--line);border-radius:12px;background:var(--field);color:var(--fg);padding:0 14px;font-size:13px;outline:none;font-family:ui-monospace,"IBM Plex Mono",Consolas,monospace}
+.field:focus{border-color:var(--line2)}
+.field::placeholder{color:var(--dim);font-family:"IBM Plex Sans","Segoe UI",sans-serif}
+.power{position:relative;width:112px;height:112px;border-radius:50%;border:1px solid var(--line2);background:var(--panel);color:var(--fg);display:grid;place-items:center;transition:transform .15s var(--ease),border-color .15s var(--ease),background .15s var(--ease)}
+.power:hover{border-color:var(--fg)}
+.power:active{transform:scale(.98)}
+.power svg{width:32px;height:32px}
+.power.ok{color:var(--ok);border-color:rgba(138,163,138,.55);background:#101410}
+.power.ok .ring{position:absolute;inset:6px;border-radius:50%;border:1px solid rgba(138,163,138,.4);animation:pulse 2.2s ease-in-out infinite}
+.power.err{color:var(--err);border-color:rgba(193,123,123,.55)}
+.cap{text-align:center;font-size:13px;line-height:1.4;color:var(--muted);max-width:14rem}
+.lbl{font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.ip{margin-top:6px;font-size:22px;font-weight:500;color:var(--ok);letter-spacing:-.02em}
+.fields{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
+.val{margin-top:4px;font-size:13px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,"IBM Plex Mono",Consolas,monospace}
+.meta{margin-top:10px;font-size:12px;color:var(--muted)}
+.btn{height:44px;width:100%;border:0;border-radius:12px;background:var(--accent);color:var(--ink);font-weight:500;font-size:14px;transition:opacity .15s var(--ease)}
+.btn:hover{opacity:.9}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.alert{color:var(--err);font-size:14px;line-height:1.45}
+.foot{flex-shrink:0;margin-top:12px;text-align:center;font-size:12px;color:var(--dim)}
+.quiet{margin:6px auto 0;border:0;background:transparent;color:var(--dim);font-size:12px;min-height:32px}
+.spin{width:32px;height:32px;border:2px solid var(--line2);border-top-color:var(--muted);border-radius:50%;animation:rot .8s linear infinite}
+hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
+@keyframes rot{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+@media (max-width:720px){
+  .main{grid-template-columns:1fr;overflow:auto}
+  .hero{padding:8px 0}
+  .row,.fields{grid-template-columns:1fr}
+  .cards{overflow:visible}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <div>
+      <div class="brand">Ply</div>
+      <p class="sub">Windows VPN. Paper, vless, hy2, vmess, trojan или ss. Туннель, не системный прокси.</p>
+    </div>
+    <div id="pill" class="pill">ожидание</div>
+  </header>
+  <div class="main">
+    <aside class="hero">
+      <button id="power" class="power" type="button" aria-label="Питание">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <path d="M12 2v10"/><path d="M8.5 4.6a8 8 0 1 0 7 0"/>
+        </svg>
+      </button>
+      <p id="cap" class="cap">Вставь ссылку, затем нажми</p>
+    </aside>
+    <div class="cards">
+      <section class="card">
+        <div class="k">Ключ</div>
+        <input id="url" class="field" spellcheck="false" autocomplete="off" placeholder="vless://  hy2://  vmess://  trojan://  ss://  или https://…"/>
+        <p class="hint">Хвост # отрежется сам. Paper, vless, hy2, vmess, trojan или ss. Подписка — первая строка. TUIC Xray не умеет.</p>
+      </section>
+      <div class="row">
+        <section class="card sw">
+          <div>
+            <div class="t">Россия мимо</div>
+            <div class="s">.ru · Яндекс · VK</div>
+          </div>
+          <button id="split" class="toggle on" type="button" aria-label="Россия мимо" aria-pressed="true"><i></i></button>
+        </section>
+        <section class="card sw">
+          <div>
+            <div class="t">Автозапуск</div>
+            <div class="s">ядро с Windows</div>
+          </div>
+          <button id="auto" class="toggle on" type="button" aria-label="Автозапуск" aria-pressed="true"><i></i></button>
+        </section>
+      </div>
+      <section id="errbox" class="card" hidden><p id="err" class="alert"></p></section>
+      <section id="adminbox" class="card" hidden>
+        <p class="alert">Туннель без прав администратора не встанет.</p>
+        <button id="elevate" class="btn" type="button" style="margin-top:12px">Запросить права</button>
+      </section>
+      <section id="live" class="card" hidden>
+        <div id="liveTitle" class="display">узел</div>
+        <div class="lbl" style="margin-top:14px">Выход</div>
+        <div id="ip" class="ip">—</div>
+        <div class="fields">
+          <div><div class="lbl">Протокол</div><div id="fproto" class="val">—</div></div>
+          <div><div class="lbl">Адрес</div><div id="faddr" class="val">—</div></div>
+          <div><div class="lbl">Транспорт</div><div id="fnet" class="val">—</div></div>
+          <div><div class="lbl">TLS</div><div id="ftls" class="val">—</div></div>
+          <div><div class="lbl">SNI</div><div id="fsni" class="val">—</div></div>
+          <div><div class="lbl">Flow</div><div id="fflow" class="val">—</div></div>
+        </div>
+        <p id="route" class="meta"></p>
+        <hr class="sep"/>
+        <button id="refresh" class="btn ghost" type="button">Обновить ключ</button>
+      </section>
+      <section id="upd" class="card" hidden>
+        <div class="display" id="updtitle">Обновление</div>
+        <p class="hint">можно поставить из приложения, ссылка Paper останется</p>
+        <button id="apply" class="btn" type="button" style="margin-top:12px">Обновить</button>
+      </section>
+    </div>
+  </div>
+  <footer class="foot">
+    <div id="ver">Ply</div>
+    <button id="check" class="quiet" type="button">проверить обновления</button>
+  </footer>
+</div>
+<script>
+const TOKEN = new URLSearchParams(location.search).get("t") || "";
+const $ = (id) => document.getElementById(id);
+const on = (el, cls, yes) => el.classList.toggle(cls, !!yes);
+const dash = (v) => (v && String(v).trim()) ? String(v) : "—";
+const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 2v10"/><path d="M8.5 4.6a8 8 0 1 0 7 0"/></svg>';
+let snap = {status:"ожидание", split:true, auto:true};
+let lastBusy = false;
+
+async function api(path, body){
+  const opt = {headers:{Authorization:"Bearer "+TOKEN}};
+  if (body !== undefined){
+    opt.method = "POST";
+    opt.headers["Content-Type"] = "application/json";
+    opt.body = JSON.stringify(body);
+  }
+  const r = await fetch(path, opt);
+  if (!r.ok) throw new Error("ядро HTTP "+r.status);
+  return r.json();
+}
+
+function setToggle(el, yes){
+  on(el, "on", yes);
+  el.setAttribute("aria-pressed", yes ? "true" : "false");
+}
+
+function paint(s){
+  snap = s || snap;
+  const live = !!snap.live;
+  const err = snap.error || "";
+  $("pill").textContent = err ? "ошибка" : (snap.busy ? "подключаю" : (live ? (snap.status || "VPN включён") : "ожидание"));
+  $("pill").className = "pill" + (err ? " err" : live ? " ok" : "");
+  const p = $("power");
+  p.className = "power" + (err ? " err" : live ? " ok" : "");
+  p.disabled = !!snap.busy;
+  if (snap.busy !== lastBusy){
+    lastBusy = !!snap.busy;
+    p.innerHTML = snap.busy ? '<div class="spin"></div>' : ICON + (live ? '<span class="ring"></span>' : "");
+  } else if (!snap.busy){
+    p.innerHTML = ICON + (live ? '<span class="ring"></span>' : "");
+  }
+  $("cap").textContent = !snap.admin ? "нужны права администратора" : snap.busy ? "поднимаю туннель…" : live ? (snap.detail || "нажми, чтобы выключить") : "Вставь ссылку, затем нажми";
+  if (snap.url && !$("url").value) $("url").value = snap.url;
+  setToggle($("split"), !!snap.split);
+  setToggle($("auto"), snap.auto !== false);
+  $("errbox").hidden = !err;
+  $("err").textContent = err;
+  $("adminbox").hidden = !!snap.admin || live;
+  $("live").hidden = !live;
+  if (live){
+    $("ip").textContent = snap.exitIP || "проверяю…";
+    const n = snap.node || {};
+    const proto = n.proto || "";
+    $("liveTitle").textContent = n.remark || (proto === "hysteria" ? "hy2" : proto) || "узел";
+    $("fproto").textContent = dash(proto === "hysteria" ? "hy2" : proto);
+    $("faddr").textContent = n.host ? (n.host + ":" + n.port) : "—";
+    $("fnet").textContent = dash(n.network);
+    $("ftls").textContent = dash(n.security);
+    $("fsni").textContent = dash(n.sni);
+    $("fflow").textContent = dash(n.flow);
+    $("route").textContent = snap.split ? "Россия мимо · остальное в туннель" : "полный туннель";
+  }
+  const u = snap.update;
+  $("upd").hidden = !u;
+  if (u){
+    $("updtitle").textContent = "Вышла v" + (u.tag || "");
+    $("apply").textContent = snap.updNote && snap.updNote.indexOf("скач") >= 0 ? "Скачиваю установщик…" : "Обновить до " + (u.tag || "");
+  }
+  $("ver").textContent = "Ply  ·  v" + (snap.version || "") + "  ·  крестик закрывает окно, ядро в трее";
+  if (snap.updNote && !u) $("check").textContent = snap.updNote;
+  else if (!u) $("check").textContent = "проверить обновления";
+}
+
+async function pull(){
+  try{ paint(await api("/v1/state")); }
+  catch(e){ /* ядро спит */ }
+}
+
+$("power").onclick = async () => {
+  if (snap.busy) return;
+  try{
+    if (snap.live) await api("/v1/disconnect", {});
+    else await api("/v1/connect", {url:$("url").value.trim(), auto:snap.auto !== false});
+    await pull();
+  }catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+};
+$("url").addEventListener("keydown", (e) => { if (e.key === "Enter") $("power").click(); });
+$("split").onclick = async () => { await api("/v1/split", {on: !$("split").classList.contains("on")}); await pull(); };
+$("auto").onclick = async () => { await api("/v1/autostart", {on: !$("auto").classList.contains("on")}); await pull(); };
+$("refresh").onclick = async () => { await api("/v1/refresh", {}); await pull(); };
+$("check").onclick = async () => { $("check").textContent = "ищу на GitHub…"; await api("/v1/update/check", {}); await pull(); };
+$("apply").onclick = async () => { $("apply").textContent = "Скачиваю установщик…"; await api("/v1/update/apply", {}); };
+$("elevate").onclick = () => { location.reload(); };
+setInterval(pull, 400);
+pull();
+</script>
+</body>
+</html>

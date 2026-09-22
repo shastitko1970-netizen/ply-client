@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -98,6 +99,12 @@ func (d *Daemon) Quit() error {
 	_, err := d.do(http.MethodPost, "/v1/quit", map[string]any{})
 	return err
 }
+
+func (d *Daemon) ShellURL() string {
+	return d.base + "/ui?t=" + url.QueryEscape(d.token)
+}
+
+func (d *Daemon) Base() string { return d.base }
 
 func TryAttach() *Daemon {
 	c, err := readCoreFile()

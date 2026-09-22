@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"ply/internal/core/shell"
 )
 
 type Snapshot struct {
@@ -213,7 +215,27 @@ func daemonMux(token string) http.Handler {
 			os.Exit(0)
 		}()
 	})
+	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(shell.HTML)
+	})
+	mux.HandleFunc("/fonts/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/fonts/")
+		b, ok := shell.Font(name)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "font/ttf")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(b)
+	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ui" || strings.HasPrefix(r.URL.Path, "/fonts/") {
+			mux.ServeHTTP(w, r)
+			return
+		}
 		got := r.Header.Get("Authorization")
 		want := "Bearer " + token
 		if subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {

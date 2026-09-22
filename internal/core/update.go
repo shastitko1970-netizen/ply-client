@@ -13,9 +13,9 @@ import (
 )
 
 type Update struct {
-	Tag      string
-	SetupURL string
-	Notes    string
+	Tag      string `json:"tag"`
+	SetupURL string `json:"setupURL"`
+	Notes    string `json:"notes"`
 }
 
 func parseVer(s string) [3]int {

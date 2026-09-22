@@ -10,36 +10,36 @@ import (
 	"time"
 )
 
-const UA = "Ply/1.9"
+const UA = "Ply/1.10"
 
 type Node struct {
-	Proto    string
-	UUID     string
-	Password string
-	Method   string
-	Host     string
-	Port     int
-	Flow     string
-	Security string
-	Network  string
-	SNI      string
-	FP       string
-	PBK      string
-	SID      string
-	Spx      string
-	Enc      string
-	Path     string
-	HostHdr  string
-	ALPN     string
-	Service  string
-	Mode     string
-	Header   string
-	AlterID  int
-	Insecure bool
-	Obfs     string
-	ObfsPass string
-	Pin      string
-	Remark   string
+	Proto    string `json:"proto"`
+	UUID     string `json:"uuid"`
+	Password string `json:"password"`
+	Method   string `json:"method"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Flow     string `json:"flow"`
+	Security string `json:"security"`
+	Network  string `json:"network"`
+	SNI      string `json:"sni"`
+	FP       string `json:"fingerprint"`
+	PBK      string `json:"publicKey"`
+	SID      string `json:"shortId"`
+	Spx      string `json:"spiderX"`
+	Enc      string `json:"encryption"`
+	Path     string `json:"path"`
+	HostHdr  string `json:"hostHeader"`
+	ALPN     string `json:"alpn"`
+	Service  string `json:"serviceName"`
+	Mode     string `json:"mode"`
+	Header   string `json:"headerType"`
+	AlterID  int    `json:"alterId"`
+	Insecure bool   `json:"insecure"`
+	Obfs     string `json:"obfs"`
+	ObfsPass string `json:"obfsPass"`
+	Pin      string `json:"pin"`
+	Remark   string `json:"remark"`
 }
 
 func (n *Node) Label() string {
