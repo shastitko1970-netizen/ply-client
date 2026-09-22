@@ -4,37 +4,12 @@ package core
 
 import (
 	"os/exec"
-	"strings"
 	"syscall"
 	"time"
-	"unsafe"
-
-	"golang.org/x/sys/windows"
 )
 
 func PlyAdapterUp() bool {
-	var size uint32 = 15000
-	for i := 0; i < 3; i++ {
-		buf := make([]byte, size)
-		aa := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0]))
-		err := windows.GetAdaptersAddresses(windows.AF_UNSPEC, windows.GAA_FLAG_INCLUDE_PREFIX, 0, aa, &size)
-		if err == windows.ERROR_BUFFER_OVERFLOW {
-			continue
-		}
-		if err != nil {
-			return false
-		}
-		for ; aa != nil; aa = aa.Next {
-			desc := windows.UTF16PtrToString(aa.Description)
-			name := windows.UTF16PtrToString(aa.FriendlyName)
-			blob := strings.ToLower(desc + " " + name)
-			if strings.Contains(blob, "ply") && aa.OperStatus == windows.IfOperStatusUp {
-				return true
-			}
-		}
-		return false
-	}
-	return false
+	return plyAdapter() != nil
 }
 
 func WaitPlyAdapter(d time.Duration) bool {

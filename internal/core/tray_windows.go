@@ -32,7 +32,7 @@ const (
 	tpmRight    = 0x0008
 	tpmBottom   = 0x0020
 	tpmReturn   = 0x0100
-	gwlWndProc = ^uintptr(3) // -4, GWLP_WNDPROC
+	gwlWndProc  = ^uintptr(3) // -4, GWLP_WNDPROC
 	cmdShow     = 1001
 	cmdOff      = 1002
 	cmdQuit     = 1003

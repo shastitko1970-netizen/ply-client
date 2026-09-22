@@ -202,7 +202,8 @@ func (u *ui) doInstall() {
 		"1. Ply стоит в Program Files. Ищи «Ply» в меню Пуск или на рабочем столе.\r\n" +
 		"2. Согласись на права администратора.\r\n" +
 		"3. Вставь ссылку Paper, нажми «Включить VPN».\r\n" +
-		"4. Крестик сворачивает в трей — туннель живой. Выход только из значка у часов.\r\n\r\n" +
+		"4. Крестик сворачивает в трей — туннель живой. Выход только из значка у часов.\r\n" +
+		"5. Новые версии — кнопка «Проверить обновления» в Ply.\r\n\r\n" +
 		"Happ и приложение Paper выключи.\r\n" +
 		"Папка: " + u.dest + "\r\n"
 	_ = os.WriteFile(filepath.Join(u.dest, "README.txt"), []byte(readme), 0644)
@@ -294,7 +295,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				if u.stage != stepWelcome {
 					return layout.Dimensions{}
 				}
-				how := "Поставлю в Program Files. Потом ищи Ply в меню Пуск — как Telegram, не в папке.\nКрестик не гасит VPN: значок у часов, туннель живой."
+				how := "Поставлю в Program Files. Потом ищи Ply в меню Пуск — как Telegram, не в папке.\nКрестик не гасит VPN. Новые версии Ply скачает сама."
 				t := material.Body2(u.th, how)
 				t.Color = colMuted
 				return t.Layout(gtx)

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const UA = "Ply/1.1"
+const UA = "Ply/1.3"
 
 type Node struct {
 	UUID, Host, Flow, Security, Network, SNI, FP, PBK, SID, Spx, Enc string
@@ -89,6 +89,27 @@ func ParseVLESS(raw string) (*Node, error) {
 	return n, nil
 }
 
+func (n *Node) ServerIPv4() string {
+	if n == nil {
+		return ""
+	}
+	if ip := net.ParseIP(n.Host); ip != nil {
+		if v4 := ip.To4(); v4 != nil {
+			return v4.String()
+		}
+	}
+	ips, err := net.LookupIP(n.Host)
+	if err != nil {
+		return ""
+	}
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			return v4.String()
+		}
+	}
+	return ""
+}
+
 func FetchSub(sub string) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, StripSubHash(sub), nil)
 	if err != nil {
@@ -162,7 +183,7 @@ func RenderXray(n *Node, port int) ([]byte, error) {
 					"mtu":                    1500,
 					"gateway":                []string{"198.18.0.1/16"},
 					"dns":                    []string{"1.1.1.1", "8.8.8.8"},
-					"autoSystemRoutingTable": []string{"0.0.0.0/0"},
+					"autoSystemRoutingTable": []string{"0.0.0.0/1", "128.0.0.0/1"},
 					"autoOutboundsInterface": "auto",
 				},
 				"sniffing": map[string]any{

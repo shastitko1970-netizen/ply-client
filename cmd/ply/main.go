@@ -6,8 +6,10 @@ import (
 	"image/color"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"gioui.org/app"
 	"gioui.org/font"
@@ -44,6 +46,8 @@ type ui struct {
 	connect    widget.Clickable
 	disconnect widget.Clickable
 	elevate    widget.Clickable
+	checkUpd   widget.Clickable
+	applyUpd   widget.Clickable
 	auto       widget.Bool
 	busy       bool
 	admin      bool
@@ -54,6 +58,9 @@ type ui struct {
 	live       bool
 	exitIP     string
 	node       *core.Node
+	upd        *core.Update
+	updBusy    bool
+	updNote    string
 }
 
 func main() {
@@ -66,8 +73,8 @@ func main() {
 		w := new(app.Window)
 		w.Option(
 			app.Title(core.WindowTitle),
-			app.Size(unit.Dp(460), unit.Dp(720)),
-			app.MinSize(unit.Dp(400), unit.Dp(560)),
+			app.Size(unit.Dp(460), unit.Dp(760)),
+			app.MinSize(unit.Dp(400), unit.Dp(600)),
 		)
 		if err := run(w); err != nil {
 			log.Fatal(err)
@@ -92,6 +99,10 @@ func run(w *app.Window) error {
 	if saved := core.ReadURL(); saved != "" {
 		u.url.SetText(saved)
 	}
+	go func() {
+		time.Sleep(1600 * time.Millisecond)
+		u.checkUpdate(false)
+	}()
 	if u.admin {
 		if saved := strings.TrimSpace(u.url.Text()); saved != "" {
 			u.busy = true
@@ -173,6 +184,16 @@ func (u *ui) update(gtx layout.Context) {
 		u.busy = true
 		go u.doDisconnect()
 	}
+	if u.checkUpd.Clicked(gtx) && !u.updBusy {
+		u.updBusy = true
+		u.updNote = "ищу обновления…"
+		go u.checkUpdate(true)
+	}
+	if u.applyUpd.Clicked(gtx) && !u.updBusy && u.upd != nil {
+		u.updBusy = true
+		u.updNote = "скачиваю установщик…"
+		go u.applyUpdate()
+	}
 }
 
 func (u *ui) doConnect(src string, auto bool) {
@@ -199,6 +220,7 @@ func (u *ui) doConnect(src string, auto bool) {
 		_ = core.SetAutoStart(true, exe)
 	}
 	u.w.Invalidate()
+	go u.checkUpdate(false)
 }
 
 func (u *ui) doDisconnect() {
@@ -210,6 +232,56 @@ func (u *ui) doDisconnect() {
 	u.err = ""
 	u.busy = false
 	u.w.Invalidate()
+}
+
+func (u *ui) checkUpdate(manual bool) {
+	upd, err := core.CheckLatest()
+	u.updBusy = false
+	if err != nil {
+		if manual {
+			u.updNote = err.Error()
+		}
+		u.w.Invalidate()
+		return
+	}
+	if upd == nil {
+		u.upd = nil
+		if manual {
+			u.updNote = "уже свежая v" + core.Version
+		}
+		u.w.Invalidate()
+		return
+	}
+	u.upd = upd
+	u.updNote = ""
+	u.w.Invalidate()
+}
+
+func (u *ui) applyUpdate() {
+	if u.upd == nil || u.upd.SetupURL == "" {
+		u.updBusy = false
+		u.updNote = "нет ссылки на установщик"
+		u.w.Invalidate()
+		return
+	}
+	dest := filepath.Join(os.TempDir(), "PlySetup-"+u.upd.Tag+".exe")
+	if err := core.DownloadSetup(u.upd.SetupURL, dest); err != nil {
+		u.updBusy = false
+		u.updNote = err.Error()
+		u.w.Invalidate()
+		return
+	}
+	u.updNote = "запускаю установщик — Ply закроется"
+	u.w.Invalidate()
+	_ = core.Disconnect()
+	if err := core.RunInstaller(dest); err != nil {
+		u.updBusy = false
+		u.updNote = err.Error()
+		u.w.Invalidate()
+		return
+	}
+	core.RemoveTray()
+	os.Exit(0)
 }
 
 func (u *ui) layout(gtx layout.Context) layout.Dimensions {
@@ -240,7 +312,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				b := material.Body2(u.th, "1. Вставь ссылку Paper\n2. Нажми «Включить VPN»\n3. Крестик сворачивает в трей — туннель не гаснет\n4. Выход только из значка у часов")
+				b := material.Body2(u.th, "1. Вставь ссылку Paper\n2. Нажми «Включить VPN»\n3. Крестик сворачивает в трей — туннель не гаснет\n4. Выход только из значка у часов\n5. Если на GitHub выйдет новая версия — Ply сама предложит обновить")
 				b.Color = colMuted
 				return b.Layout(gtx)
 			}),
@@ -293,7 +365,11 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				cb.IconColor = colAccent
 				return cb.Layout(gtx)
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(18)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.layoutUpdate(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if u.err != "" {
 					t := material.Body2(u.th, u.err)
@@ -305,7 +381,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 					if ip == "" {
 						ip = "проверяю…"
 					}
-					msg := "Адаптер Ply Tunnel поднят. Значок у часов.\nВыход  " + ip
+					msg := "Маршрут Windows через Ply Tunnel. Значок у часов.\nВыход  " + ip
 					if u.detail != "" {
 						msg += "\nУзел   " + u.detail
 					}
@@ -319,7 +395,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Flexed(1, layout.Spacer{}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				hint := "Ply  ·  v" + core.Version + "  ·  Program Files  ·  трей"
+				hint := "Ply  ·  v" + core.Version + "  ·  туннель  ·  автообновление"
 				if runtime.GOOS != "windows" {
 					hint = "Ply  ·  v" + core.Version
 				}
@@ -330,6 +406,51 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 		)
 	})
+}
+
+func (u *ui) layoutUpdate(gtx layout.Context) layout.Dimensions {
+	if u.upd != nil {
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				t := material.Body2(u.th, "Вышла v"+u.upd.Tag+" — можно обновить из приложения")
+				t.Color = colOk
+				return t.Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				label := "Обновить до " + u.upd.Tag
+				if u.updBusy {
+					label = "Скачиваю установщик…"
+				}
+				return primaryBtn(gtx, u.th, &u.applyUpd, label)
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if u.updNote == "" {
+					return layout.Dimensions{}
+				}
+				t := material.Caption(u.th, u.updNote)
+				t.Color = colSubtle
+				return t.Layout(gtx)
+			}),
+		)
+	}
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			label := "Проверить обновления"
+			if u.updBusy {
+				label = "Ищу на GitHub…"
+			}
+			return ghostBtn(gtx, u.th, &u.checkUpd, label)
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if u.updNote == "" {
+				return layout.Dimensions{}
+			}
+			t := material.Caption(u.th, u.updNote)
+			t.Color = colSubtle
+			return t.Layout(gtx)
+		}),
+	)
 }
 
 func primaryBtn(gtx layout.Context, th *material.Theme, click *widget.Clickable, label string) layout.Dimensions {

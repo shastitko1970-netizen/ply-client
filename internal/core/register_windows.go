@@ -107,6 +107,9 @@ func WriteUninstall(dir string) error {
 		"reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v Ply /f >nul 2>&1\r\n" +
 		"reg delete \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Ply.exe\" /f >nul 2>&1\r\n" +
 		"reg delete \"HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Ply.exe\" /f >nul 2>&1\r\n" +
+		"powershell -NoProfile -NonInteractive -Command \"Remove-VpnConnection -Name 'Ply' -Force -AllUserConnection -ErrorAction SilentlyContinue; Remove-VpnConnection -Name 'Ply' -Force -ErrorAction SilentlyContinue\" >nul 2>&1\r\n" +
+		"route delete 0.0.0.0 mask 128.0.0.0 >nul 2>&1\r\n" +
+		"route delete 128.0.0.0 mask 128.0.0.0 >nul 2>&1\r\n" +
 		"del /f /q \"%USERPROFILE%\\Desktop\\Ply.lnk\" >nul 2>&1\r\n" +
 		"del /f /q \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Ply.lnk\" >nul 2>&1\r\n" +
 		"del /f /q \"%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\Ply.lnk\" >nul 2>&1\r\n" +

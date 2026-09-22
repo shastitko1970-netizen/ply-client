@@ -30,6 +30,9 @@ func TestParseDoubleHashVLESS(t *testing.T) {
 	if n.PBK != "3rdiCNo7h8FvYrC7WdPYcTt7M2g8PhlRy9eCI2hLDB0" {
 		t.Fatalf("pbk %s", n.PBK)
 	}
+	if n.ServerIPv4() != "2.27.175.32" {
+		t.Fatalf("server ip %s", n.ServerIPv4())
+	}
 }
 
 func TestFirstVLESS(t *testing.T) {
@@ -54,7 +57,7 @@ func TestRenderXrayHasTUN(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, need := range []string{`"protocol": "tun"`, `"desc": "Ply"`, `"autoSystemRoutingTable"`, `"mux"`} {
+	for _, need := range []string{`"protocol": "tun"`, `"desc": "Ply"`, `"autoSystemRoutingTable"`, `"0.0.0.0/1"`, `"128.0.0.0/1"`, `"mux"`} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("config missing %s", need)
 		}

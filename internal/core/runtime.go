@@ -23,10 +23,12 @@ type Session struct {
 }
 
 var (
-	watchMu   sync.Mutex
-	watchStop chan struct{}
-	lastCfg   string
-	lastBin   string
+	watchMu      sync.Mutex
+	watchStop    chan struct{}
+	watchDone    chan struct{}
+	lastCfg      string
+	lastBin      string
+	lastServerIP string
 )
 
 func AppDir() (string, error) {
@@ -156,7 +158,9 @@ func killXrayProc() {
 
 func StopXray() {
 	stopWatchdog()
+	RestoreTunRoutes()
 	killXrayProc()
+	lastServerIP = ""
 }
 
 func PortOpen(port int) bool {
@@ -234,10 +238,13 @@ func ProbeExitIP() string {
 func startWatchdog() {
 	stopWatchdog()
 	ch := make(chan struct{})
+	done := make(chan struct{})
 	watchMu.Lock()
 	watchStop = ch
+	watchDone = done
 	watchMu.Unlock()
 	go func() {
+		defer close(done)
 		t := time.NewTicker(4 * time.Second)
 		defer t.Stop()
 		for {
@@ -250,6 +257,9 @@ func startWatchdog() {
 					alive = alive && PlyAdapterUp()
 				}
 				if alive {
+					if runtime.GOOS == "windows" && lastServerIP != "" && !DefaultViaPly() {
+						_ = ApplyTunRoutes(lastServerIP)
+					}
 					continue
 				}
 				if lastBin == "" || lastCfg == "" {
@@ -258,7 +268,12 @@ func startWatchdog() {
 				killXrayProc()
 				time.Sleep(200 * time.Millisecond)
 				_ = StartXray(lastBin, lastCfg)
-				_ = WaitPort(LocalPort, 4*time.Second)
+				if WaitPort(LocalPort, 4*time.Second) != nil {
+					continue
+				}
+				if runtime.GOOS == "windows" && WaitPlyAdapter(6*time.Second) && lastServerIP != "" {
+					_ = ApplyTunRoutes(lastServerIP)
+				}
 			}
 		}
 	}()
@@ -266,11 +281,18 @@ func startWatchdog() {
 
 func stopWatchdog() {
 	watchMu.Lock()
-	if watchStop != nil {
-		close(watchStop)
-		watchStop = nil
+	if watchStop == nil {
+		watchMu.Unlock()
+		return
 	}
+	close(watchStop)
+	watchStop = nil
+	done := watchDone
+	watchDone = nil
 	watchMu.Unlock()
+	if done != nil {
+		<-done
+	}
 }
 
 func Connect(source string) (*Session, error) {
@@ -329,7 +351,20 @@ func Connect(source string) (*Session, error) {
 			return nil, fmt.Errorf("туннель: %s\n%s", msg, tailLog(6))
 		}
 		PreferAdapterMetric()
-		_ = SetWinProxy("", false) // leftover from 1.0/1.1
+		lastServerIP = n.ServerIPv4()
+		_ = ApplyTunRoutes(lastServerIP)
+		ok := DefaultViaPly()
+		for i := 0; i < 5 && !ok; i++ {
+			time.Sleep(350 * time.Millisecond)
+			_ = ApplyTunRoutes(lastServerIP)
+			ok = DefaultViaPly()
+		}
+		if !ok {
+			StopXray()
+			return nil, fmt.Errorf("адаптер есть, но дефолтный маршрут всё ещё Wi‑Fi — туннель не ест Windows")
+		}
+		_ = SetWinProxy("", false)
+		go RegisterVpnProfile(lastServerIP)
 	} else if msg := tunFailed(tailLog(20)); msg != "" {
 		StopXray()
 		return nil, fmt.Errorf("туннель: %s", msg)
@@ -338,7 +373,7 @@ func Connect(source string) (*Session, error) {
 	startWatchdog()
 	ip := ProbeExitIP()
 	if runtime.GOOS == "windows" {
-		TrayBalloon("Ply", "VPN включён. Туннель Ply Tunnel.")
+		TrayBalloon("Ply", "VPN включён. Весь IPv4 через Ply Tunnel.")
 	}
 	return &Session{Node: n, ExitIP: ip}, nil
 }
