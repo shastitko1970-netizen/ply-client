@@ -1,0 +1,6 @@
+dist/
+*.exe
+*.syso
+cmd/setup/payload.zip
+data/
+.DS_Store

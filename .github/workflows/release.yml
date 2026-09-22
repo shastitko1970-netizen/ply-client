@@ -1,0 +1,92 @@
+name: windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Icon
+        run: python scripts/make_icon.py
+        continue-on-error: true
+
+      - name: Winres
+        run: |
+          go install github.com/akavel/rsrc@latest
+          $env:PATH = "$(go env GOPATH)\bin;" + $env:PATH
+          if (Test-Path assets/icon.ico) {
+            rsrc -ico assets/icon.ico -arch amd64 -o cmd/ply/rsrc_windows.syso
+            rsrc -ico assets/icon.ico -arch amd64 -o cmd/setup/rsrc_windows.syso
+          }
+
+      - name: Build Ply
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          New-Item -ItemType Directory -Force dist, payload | Out-Null
+          go build -trimpath -ldflags="-s -w -H windowsgui" -o dist/Ply.exe ./cmd/ply
+
+      - name: Fetch Xray
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-windows-64.zip" -OutFile xray.zip
+          Expand-Archive -Path xray.zip -DestinationPath xrayout -Force
+          Copy-Item dist/Ply.exe payload/Ply.exe
+          Copy-Item xrayout/xray.exe payload/xray.exe
+          Copy-Item xrayout/geoip.dat payload/geoip.dat
+
+      - name: Payload zip
+        run: |
+          Compress-Archive -Path payload\* -DestinationPath cmd/setup/payload.zip -Force
+
+      - name: Build installer
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build -trimpath -ldflags="-s -w -H windowsgui" -o dist/PlySetup.exe ./cmd/setup
+          Copy-Item README.txt dist/README.txt
+          Compress-Archive -Path dist/PlySetup.exe, dist/README.txt -DestinationPath dist/Ply-1.0.0-win64.zip -Force
+          Compress-Archive -Path payload\* -DestinationPath dist/Ply-portable-win64.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ply-windows
+          path: |
+            dist/PlySetup.exe
+            dist/Ply-1.0.0-win64.zip
+            dist/Ply-portable-win64.zip
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: Ply 1.0.0
+          body: |
+            Установщик: **PlySetup.exe** (внутри zip).
+
+            1. Распакуй zip, запусти PlySetup.exe
+            2. Если SmartScreen — Подробнее → Выполнить в любом случае
+            3. Вставь ссылку Paper, Happ выключи
+
+            Портативный вариант без установщика: Ply-portable-win64.zip
+          files: |
+            dist/Ply-1.0.0-win64.zip
+            dist/PlySetup.exe
+            dist/Ply-portable-win64.zip
+          fail_on_unmatched_files: true
