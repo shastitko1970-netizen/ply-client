@@ -8,8 +8,13 @@ import (
 )
 
 func tuneCmd(cmd *exec.Cmd) {
+	const (
+		createNoWindow        = 0x08000000
+		createNewProcessGroup = 0x00000200
+		breakawayFromJob      = 0x01000000
+	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
-		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+		CreationFlags: createNoWindow | createNewProcessGroup | breakawayFromJob,
 	}
 }

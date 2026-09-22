@@ -14,15 +14,16 @@ import (
 )
 
 func InstalledVersion() string {
-	dir := DefaultInstallDir()
-	if b, err := os.ReadFile(filepath.Join(dir, "version.txt")); err == nil {
-		v := strings.TrimSpace(string(b))
-		if v != "" {
-			return v
+	for _, dir := range []string{DefaultInstallDir(), LegacyInstallDir()} {
+		if b, err := os.ReadFile(filepath.Join(dir, "version.txt")); err == nil {
+			v := strings.TrimSpace(string(b))
+			if v != "" {
+				return v
+			}
 		}
-	}
-	if _, err := os.Stat(filepath.Join(dir, "Ply.exe")); err == nil {
-		return "1.0.0"
+		if _, err := os.Stat(filepath.Join(dir, "Ply.exe")); err == nil {
+			return "1.0.0"
+		}
 	}
 	for _, root := range []registry.Key{registry.CURRENT_USER, registry.LOCAL_MACHINE} {
 		k, err := registry.OpenKey(root, `Software\Microsoft\Windows\CurrentVersion\Uninstall\Ply`, registry.QUERY_VALUE)
@@ -73,11 +74,27 @@ func RegisterApp(dir string) error {
 		_ = k.SetStringValue("URLInfoAbout", "https://github.com/shastitko1970-netizen/ply-client")
 		_ = k.SetDWordValue("NoModify", 1)
 		_ = k.SetDWordValue("NoRepair", 1)
-		_ = k.SetDWordValue("EstimatedSize", 70000)
+		_ = k.SetDWordValue("EstimatedSize", 80000)
 		k.Close()
 		last = nil
 	}
+	_ = registerAppPath(exe, dir)
 	return last
+}
+
+func registerAppPath(exe, dir string) error {
+	k, _, err := registry.CreateKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Ply.exe`, registry.ALL_ACCESS)
+	if err != nil {
+		k, _, err = registry.CreateKey(registry.CURRENT_USER, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Ply.exe`, registry.ALL_ACCESS)
+		if err != nil {
+			return err
+		}
+	}
+	defer k.Close()
+	if err := k.SetStringValue("", exe); err != nil {
+		return err
+	}
+	return k.SetStringValue("Path", dir)
 }
 
 func WriteUninstall(dir string) error {
@@ -88,6 +105,8 @@ func WriteUninstall(dir string) error {
 		"reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Ply\" /f >nul 2>&1\r\n" +
 		"reg delete \"HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Ply\" /f >nul 2>&1\r\n" +
 		"reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v Ply /f >nul 2>&1\r\n" +
+		"reg delete \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Ply.exe\" /f >nul 2>&1\r\n" +
+		"reg delete \"HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Ply.exe\" /f >nul 2>&1\r\n" +
 		"del /f /q \"%USERPROFILE%\\Desktop\\Ply.lnk\" >nul 2>&1\r\n" +
 		"del /f /q \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Ply.lnk\" >nul 2>&1\r\n" +
 		"del /f /q \"%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\Ply.lnk\" >nul 2>&1\r\n" +
@@ -109,9 +128,19 @@ func NotifyShell() {
 }
 
 func RemoveLegacyStartFolder() {
-	legacy := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Ply")
-	_ = os.Remove(filepath.Join(legacy, "Ply.lnk"))
-	_ = os.Remove(legacy)
+	for _, dir := range []string{
+		filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Ply"),
+		filepath.Join(LegacyInstallDir()),
+	} {
+		_ = os.Remove(filepath.Join(dir, "Ply.lnk"))
+		_ = os.Remove(dir)
+	}
+	// keep url.txt backup; remove stale binaries so Start doesn't pick LocalAppData
+	old := LegacyInstallDir()
+	if old != DefaultInstallDir() {
+		_ = os.Remove(filepath.Join(old, "Ply.exe"))
+		_ = os.Remove(filepath.Join(old, "xray.exe"))
+	}
 }
 
 func SetLogonTask(enable bool, exe string) error {

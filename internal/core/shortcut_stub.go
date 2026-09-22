@@ -10,3 +10,7 @@ func CreateShortcut(link, target, workdir, desc string) error {
 func DesktopDir() string         { return "" }
 func StartMenuDir() string       { return "" }
 func CommonStartMenuDir() string { return "" }
+func InstallShortcuts(ply, dest string) error {
+	_, _ = ply, dest
+	return nil
+}

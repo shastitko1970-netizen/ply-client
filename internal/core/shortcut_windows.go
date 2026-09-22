@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 func psQuote(s string) string {
@@ -26,36 +28,62 @@ func CreateShortcut(link, target, workdir, desc string) error {
 	)
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script)
 	tuneCmd(cmd)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: 0x08000000,
-	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("ярлык: %w (%s)", err, strings.TrimSpace(string(out)))
 	}
+	fi, err := os.Stat(link)
+	if err != nil || fi.Size() < 64 {
+		return fmt.Errorf("ярлык не записался: %s", link)
+	}
 	return nil
 }
 
-func DesktopDir() string {
-	if d := os.Getenv("USERPROFILE"); d != "" {
-		return filepath.Join(d, "Desktop")
+func known(id *windows.KNOWNFOLDERID, fallback func() string) string {
+	p, err := windows.KnownFolderPath(id, 0)
+	if err != nil || p == "" {
+		return fallback()
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Desktop")
+	return p
+}
+
+func DesktopDir() string {
+	return known(windows.FOLDERID_Desktop, func() string {
+		if d := os.Getenv("USERPROFILE"); d != "" {
+			return filepath.Join(d, "Desktop")
+		}
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, "Desktop")
+	})
 }
 
 func StartMenuDir() string {
-	if d := os.Getenv("APPDATA"); d != "" {
-		return filepath.Join(d, "Microsoft", "Windows", "Start Menu", "Programs")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs")
+	return known(windows.FOLDERID_Programs, func() string {
+		if d := os.Getenv("APPDATA"); d != "" {
+			return filepath.Join(d, "Microsoft", "Windows", "Start Menu", "Programs")
+		}
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs")
+	})
 }
 
 func CommonStartMenuDir() string {
-	if d := os.Getenv("ProgramData"); d != "" {
-		return filepath.Join(d, "Microsoft", "Windows", "Start Menu", "Programs")
+	return known(windows.FOLDERID_CommonPrograms, func() string {
+		if d := os.Getenv("ProgramData"); d != "" {
+			return filepath.Join(d, "Microsoft", "Windows", "Start Menu", "Programs")
+		}
+		return `C:\ProgramData\Microsoft\Windows\Start Menu\Programs`
+	})
+}
+
+func InstallShortcuts(ply, dest string) error {
+	if err := CreateShortcut(filepath.Join(DesktopDir(), "Ply.lnk"), ply, dest, "Ply VPN"); err != nil {
+		return err
 	}
-	return `C:\ProgramData\Microsoft\Windows\Start Menu\Programs`
+	if err := CreateShortcut(filepath.Join(StartMenuDir(), "Ply.lnk"), ply, dest, "Ply VPN"); err != nil {
+		return err
+	}
+	_ = CreateShortcut(filepath.Join(CommonStartMenuDir(), "Ply.lnk"), ply, dest, "Ply VPN")
+	return nil
 }

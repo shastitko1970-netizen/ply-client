@@ -1,38 +1,26 @@
 # Ply
 
-Windows-клиент [Paper VPN](https://papervpn.io). Вставила ссылку из кабинета — ключ чистится сам, Mux выключен, поднимается **VPN-туннель** (Wintun), не системный прокси.
+Windows-клиент [Paper VPN](https://papervpn.io). Ссылка из кабинета — ключ чистится сам, Mux выключен, поднимается **VPN-туннель** (Wintun). Крестик сворачивает в трей, туннель не гаснет.
 
 Не Happ. Не v2rayN.
 
 ## Скачать
 
-Релиз **1.1.0**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.1.0](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.1.0)
+Релиз **1.2.0**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.2.0](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.2.0)
 
-1. Скачай **Ply-1.1.0-win64.zip**, запусти **PlySetup.exe**
-2. Если стоит 1.0 — установщик сам найдёт его и обновит в ту же папку. Ссылка Paper останется.
+1. Скачай **Ply-1.2.0-win64.zip**, запусти **PlySetup.exe**
+2. Если стоит 1.0/1.1 — установщик обновит, ссылку подхватит, поставит в **Program Files**
 3. SmartScreen: «Подробнее» → «Выполнить в любом случае»
-4. Ply появится в меню Пуск (Все приложения) и на рабочем столе
-5. Открой Ply → согласись на права администратора → вставь ссылку → **Включить VPN**
-6. Happ и приложение Paper выключи. Один слой.
+4. Ищи **Ply** в меню Пуск (как Telegram), не в папке
+5. Открой → права администратора → ссылка → **Включить VPN**
+6. Крестик = в трей. Выход — правый клик по значку у часов
 
-Когда туннель живой, в Windows появляется адаптер **Ply Tunnel**, в окне Ply — «VPN включён» и IP выхода.
+Когда туннель живой: адаптер **Ply Tunnel**, значок у часов, в окне «VPN включён» и IP выхода. Если адаптер не поднялся — Ply сам скажет ошибку, а не притворится что всё ок.
 
-## Что внутри 1.1
+## 1.2
 
-- TUN через Xray + `wintun.dll`, адаптер называется Ply Tunnel
-- Регистрация в «Приложениях» Windows, ярлык в корне меню Пуск (не в папке)
-- Обновление 1.0 → 1.1 без потери `data/url.txt`
-- Автозапуск — задача с правами администратора, иначе туннель на логине не встанет
-
-## Сборка
-
-Go 1.23+, Windows cross-compile без CGO.
-
-```bash
-export CGO_ENABLED=0 GOOS=windows GOARCH=amd64
-rsrc -manifest assets/app.manifest -ico assets/icon.ico -arch amd64 -o cmd/ply/rsrc_windows.syso
-rsrc -manifest assets/app.manifest -ico assets/icon.ico -arch amd64 -o cmd/setup/rsrc_windows.syso
-go build -trimpath -ldflags="-s -w -H windowsgui" -o dist/Ply.exe ./cmd/ply
-# payload.zip: Ply.exe + xray.exe + geoip.dat + wintun.dll → cmd/setup/payload.zip
-go build -trimpath -ldflags="-s -w -H windowsgui" -o dist/PlySetup.exe ./cmd/setup
-```
+- Туннель не умирает по крестику (трей)
+- Ярлык в Program Files + App Paths, чтобы Windows не писал «нет такого приложения»
+- Watchdog: если xray упал — поднимает снова
+- Firewall allow, метрика адаптера 1
+- Иконка как у Windows VPN

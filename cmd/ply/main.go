@@ -47,6 +47,7 @@ type ui struct {
 	auto       widget.Bool
 	busy       bool
 	admin      bool
+	trayOn     bool
 	status     string
 	detail     string
 	err        string
@@ -56,11 +57,16 @@ type ui struct {
 }
 
 func main() {
+	core.SetAppID()
+	if !core.AcquireInstance() {
+		core.ActivateExisting()
+		os.Exit(0)
+	}
 	go func() {
 		w := new(app.Window)
 		w.Option(
-			app.Title("Ply — VPN"),
-			app.Size(unit.Dp(460), unit.Dp(700)),
+			app.Title(core.WindowTitle),
+			app.Size(unit.Dp(460), unit.Dp(720)),
 			app.MinSize(unit.Dp(400), unit.Dp(560)),
 		)
 		if err := run(w); err != nil {
@@ -94,17 +100,32 @@ func run(w *app.Window) error {
 		}
 	} else {
 		u.status = "нужны права"
-		u.err = "Туннель без прав администратора не встанет. Нажми «Запросить права» — Windows покажет UAC."
+		u.err = "Туннель без прав администратора не встанет. Нажми «Запросить права»."
 	}
 
 	var ops op.Ops
 	for {
 		switch e := w.Event().(type) {
 		case app.DestroyEvent:
+			core.RemoveTray()
 			_ = core.Disconnect()
 			return e.Err
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
+			if !u.trayOn {
+				u.trayOn = core.AttachTray(core.TrayHooks{
+					Invalidate: w.Invalidate,
+					OnDisconnect: func() {
+						go u.doDisconnect()
+					},
+					OnQuit: func() {
+						go func() {
+							_ = core.Disconnect()
+							core.RequestQuit()
+						}()
+					},
+				})
+			}
 			u.update(gtx)
 			paint.Fill(gtx.Ops, colBg)
 			u.layout(gtx)
@@ -219,7 +240,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				b := material.Body2(u.th, "1. Вставь ссылку Paper\n2. Нажми «Включить VPN»\n3. Разреши права администратора — без них туннеля нет")
+				b := material.Body2(u.th, "1. Вставь ссылку Paper\n2. Нажми «Включить VPN»\n3. Крестик сворачивает в трей — туннель не гаснет\n4. Выход только из значка у часов")
 				b.Color = colMuted
 				return b.Layout(gtx)
 			}),
@@ -284,7 +305,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 					if ip == "" {
 						ip = "проверяю…"
 					}
-					msg := "Туннель Ply Tunnel включён.\nВыход  " + ip
+					msg := "Адаптер Ply Tunnel поднят. Значок у часов.\nВыход  " + ip
 					if u.detail != "" {
 						msg += "\nУзел   " + u.detail
 					}
@@ -292,13 +313,13 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 					t.Color = colOk
 					return t.Layout(gtx)
 				}
-				t := material.Body2(u.th, "Пока выключено: трафик идёт мимо Paper.\nHapp и приложение Paper выключи — один слой.")
+				t := material.Body2(u.th, "Пока выключено — Windows сидит на Wi‑Fi, это нормально.\nHapp и приложение Paper выключи.")
 				t.Color = colSubtle
 				return t.Layout(gtx)
 			}),
 			layout.Flexed(1, layout.Spacer{}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				hint := "Ply  ·  v" + core.Version + "  ·  в меню Пуск как Ply"
+				hint := "Ply  ·  v" + core.Version + "  ·  Program Files  ·  трей"
 				if runtime.GOOS != "windows" {
 					hint = "Ply  ·  v" + core.Version
 				}

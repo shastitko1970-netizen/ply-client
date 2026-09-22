@@ -199,14 +199,15 @@ func (u *ui) doInstall() {
 	_ = core.WriteVersionFile(u.dest)
 	readme := "Ply " + core.Version + "\r\n\r\n" +
 		"КАК ЗАПУСТИТЬ\r\n" +
-		"1. Открой Ply из меню Пуск (Все приложения) или с рабочего стола.\r\n" +
-		"2. Windows спросит права администратора — согласись. Без них VPN-туннеля нет.\r\n" +
-		"3. Вставь ссылку из кабинета Paper.\r\n" +
-		"4. Нажми «Включить VPN». Статус станет «VPN включён», появится Ply Tunnel.\r\n\r\n" +
-		"Happ и приложение Paper выключи — один слой.\r\n" +
+		"1. Ply стоит в Program Files. Ищи «Ply» в меню Пуск или на рабочем столе.\r\n" +
+		"2. Согласись на права администратора.\r\n" +
+		"3. Вставь ссылку Paper, нажми «Включить VPN».\r\n" +
+		"4. Крестик сворачивает в трей — туннель живой. Выход только из значка у часов.\r\n\r\n" +
+		"Happ и приложение Paper выключи.\r\n" +
 		"Папка: " + u.dest + "\r\n"
 	_ = os.WriteFile(filepath.Join(u.dest, "README.txt"), []byte(readme), 0644)
 	_ = core.WriteUninstall(u.dest)
+	core.MigrateLegacyData(u.dest)
 
 	u.status = "Регистрация в Windows"
 	u.progress = 0.85
@@ -215,27 +216,19 @@ func (u *ui) doInstall() {
 		u.fail(err.Error())
 		return
 	}
+	core.AllowFirewall(ply)
+	core.AllowFirewall(xray)
 	core.RemoveLegacyStartFolder()
 
 	u.status = "Ярлыки"
 	u.progress = 0.92
 	u.w.Invalidate()
 
-	if u.desk.Value {
-		link := filepath.Join(core.DesktopDir(), "Ply.lnk")
-		if err := core.CreateShortcut(link, ply, u.dest, "Ply — VPN Paper"); err != nil {
+	if u.desk.Value || u.menu.Value {
+		if err := core.InstallShortcuts(ply, u.dest); err != nil {
 			u.fail(err.Error())
 			return
 		}
-	}
-	if u.menu.Value {
-		link := filepath.Join(core.StartMenuDir(), "Ply.lnk")
-		if err := core.CreateShortcut(link, ply, u.dest, "Ply — VPN Paper"); err != nil {
-			u.fail(err.Error())
-			return
-		}
-		common := filepath.Join(core.CommonStartMenuDir(), "Ply.lnk")
-		_ = core.CreateShortcut(common, ply, u.dest, "Ply — VPN Paper")
 	}
 	if u.auto.Value {
 		if err := core.SetAutoStart(true, ply); err != nil {
@@ -301,7 +294,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				if u.stage != stepWelcome {
 					return layout.Dimensions{}
 				}
-				how := "После установки Ply появится в меню Пуск (Все приложения) и на рабочем столе.\nОткрой → вставь ссылку → «Включить VPN»."
+				how := "Поставлю в Program Files. Потом ищи Ply в меню Пуск — как Telegram, не в папке.\nКрестик не гасит VPN: значок у часов, туннель живой."
 				t := material.Body2(u.th, how)
 				t.Color = colMuted
 				return t.Layout(gtx)
@@ -353,7 +346,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				if u.stage != stepDone {
 					return layout.Dimensions{}
 				}
-				t := material.Body2(u.th, "Ply стоит как приложение Windows.\nИщи «Ply» в меню Пуск. Запусти и включи VPN.")
+				t := material.Body2(u.th, "Ply в Program Files и в меню Пуск.\nЗапусти, включи VPN, крестик — в трей.")
 				t.Color = colOk
 				return t.Layout(gtx)
 			}),

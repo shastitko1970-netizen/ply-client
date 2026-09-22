@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,20 +22,19 @@ type Session struct {
 	ExitIP string
 }
 
+var (
+	watchMu   sync.Mutex
+	watchStop chan struct{}
+	lastCfg   string
+	lastBin   string
+)
+
 func AppDir() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Dir(exe), nil
-}
-
-func DefaultInstallDir() string {
-	if local := os.Getenv("LOCALAPPDATA"); local != "" {
-		return filepath.Join(local, "Ply")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "AppData", "Local", "Ply")
 }
 
 func DataDir() (string, error) {
@@ -131,10 +131,11 @@ func StartXray(bin, cfg string) error {
 		_ = cmd.Wait()
 		_ = lf.Close()
 	}()
+	lastBin, lastCfg = bin, cfg
 	return os.WriteFile(pidFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 }
 
-func StopXray() {
+func killXrayProc() {
 	b, err := os.ReadFile(pidFile())
 	if err == nil {
 		pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
@@ -151,6 +152,11 @@ func StopXray() {
 		tuneCmd(cmd)
 		_ = cmd.Run()
 	}
+}
+
+func StopXray() {
+	stopWatchdog()
+	killXrayProc()
 }
 
 func PortOpen(port int) bool {
@@ -225,6 +231,48 @@ func ProbeExitIP() string {
 	return ip
 }
 
+func startWatchdog() {
+	stopWatchdog()
+	ch := make(chan struct{})
+	watchMu.Lock()
+	watchStop = ch
+	watchMu.Unlock()
+	go func() {
+		t := time.NewTicker(4 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ch:
+				return
+			case <-t.C:
+				alive := PortOpen(LocalPort)
+				if runtime.GOOS == "windows" {
+					alive = alive && PlyAdapterUp()
+				}
+				if alive {
+					continue
+				}
+				if lastBin == "" || lastCfg == "" {
+					continue
+				}
+				killXrayProc()
+				time.Sleep(200 * time.Millisecond)
+				_ = StartXray(lastBin, lastCfg)
+				_ = WaitPort(LocalPort, 4*time.Second)
+			}
+		}
+	}()
+}
+
+func stopWatchdog() {
+	watchMu.Lock()
+	if watchStop != nil {
+		close(watchStop)
+		watchStop = nil
+	}
+	watchMu.Unlock()
+}
+
 func Connect(source string) (*Session, error) {
 	if runtime.GOOS == "windows" && !IsAdmin() {
 		return nil, fmt.Errorf("для туннеля нужны права администратора")
@@ -252,6 +300,12 @@ func Connect(source string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	if runtime.GOOS == "windows" {
+		AllowFirewall(xray)
+		if exe, e := os.Executable(); e == nil {
+			AllowFirewall(exe)
+		}
+	}
 	StopXray()
 	time.Sleep(200 * time.Millisecond)
 	if err := StartXray(xray, cfgPath); err != nil {
@@ -265,16 +319,27 @@ func Connect(source string) (*Session, error) {
 		}
 		return nil, fmt.Errorf("%w\n%s", err, tailLog(8))
 	}
-	time.Sleep(400 * time.Millisecond)
-	if msg := tunFailed(tailLog(20)); msg != "" {
+	if runtime.GOOS == "windows" {
+		if !WaitPlyAdapter(8 * time.Second) {
+			msg := tunFailed(tailLog(20))
+			if msg == "" {
+				msg = "адаптер Ply Tunnel не поднялся — Windows останется на Wi‑Fi"
+			}
+			StopXray()
+			return nil, fmt.Errorf("туннель: %s\n%s", msg, tailLog(6))
+		}
+		PreferAdapterMetric()
+		_ = SetWinProxy("", false) // leftover from 1.0/1.1
+	} else if msg := tunFailed(tailLog(20)); msg != "" {
 		StopXray()
 		return nil, fmt.Errorf("туннель: %s", msg)
 	}
-	if runtime.GOOS == "windows" {
-		_ = SetWinProxy(fmt.Sprintf("127.0.0.1:%d", LocalPort), true)
-	}
 	_ = SaveURL(source)
+	startWatchdog()
 	ip := ProbeExitIP()
+	if runtime.GOOS == "windows" {
+		TrayBalloon("Ply", "VPN включён. Туннель Ply Tunnel.")
+	}
 	return &Session{Node: n, ExitIP: ip}, nil
 }
 
