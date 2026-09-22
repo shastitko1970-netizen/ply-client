@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"image/color"
 	"log"
 	"os"
 	"os/exec"
@@ -15,8 +14,6 @@ import (
 	_ "embed"
 
 	"gioui.org/app"
-	"gioui.org/font"
-	"gioui.org/font/gofont"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -27,23 +24,11 @@ import (
 	"gioui.org/widget/material"
 
 	"ply/internal/core"
+	plyui "ply/internal/ui"
 )
 
 //go:embed payload.zip
 var payload []byte
-
-var (
-	colBg     = color.NRGBA{R: 10, G: 10, B: 11, A: 255}
-	colPanel  = color.NRGBA{R: 18, G: 18, B: 20, A: 255}
-	colFg     = color.NRGBA{R: 244, G: 244, B: 245, A: 255}
-	colMuted  = color.NRGBA{R: 161, G: 161, B: 170, A: 255}
-	colSubtle = color.NRGBA{R: 113, G: 113, B: 122, A: 255}
-	colLine   = color.NRGBA{R: 244, G: 244, B: 245, A: 28}
-	colAccent = color.NRGBA{R: 200, G: 204, B: 212, A: 255}
-	colInk    = color.NRGBA{R: 10, G: 10, B: 11, A: 255}
-	colErr    = color.NRGBA{R: 193, G: 123, B: 123, A: 255}
-	colOk     = color.NRGBA{R: 138, G: 163, B: 138, A: 255}
-)
 
 type step int
 
@@ -88,12 +73,7 @@ func main() {
 }
 
 func run(w *app.Window) error {
-	th := material.NewTheme()
-	th.Shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
-	th.Palette.Bg = colBg
-	th.Palette.Fg = colFg
-	th.Palette.ContrastBg = colAccent
-	th.Palette.ContrastFg = colInk
+	th := plyui.NewTheme()
 
 	old := core.InstalledVersion()
 	u := &ui{
@@ -122,7 +102,7 @@ func run(w *app.Window) error {
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
 			u.update(gtx)
-			paint.Fill(gtx.Ops, colBg)
+			paint.Fill(gtx.Ops, plyui.Bg)
 			u.layout(gtx)
 			e.Frame(gtx.Ops)
 		}
@@ -206,10 +186,10 @@ func (u *ui) doInstall() {
 		"КАК ЗАПУСТИТЬ\r\n" +
 		"1. Ply стоит в Program Files. Ищи «Ply» в меню Пуск или на рабочем столе.\r\n" +
 		"2. Согласись на права администратора.\r\n" +
-		"3. Вставь ссылку Paper, нажми «Включить VPN».\r\n" +
+		"3. Вставь ссылку Paper, нажми кнопку питания.\r\n" +
 		"4. Крестик сворачивает в трей — туннель живой. Выход только из значка у часов.\r\n" +
-		"5. «Россия напрямую» — .ru и российские сервисы мимо VPN.\r\n" +
-		"6. Новые версии — кнопка «Проверить обновления» в Ply.\r\n\r\n" +
+		"5. «Россия мимо» — .ru и российские сервисы без VPN.\r\n" +
+		"6. Новые версии Ply скачает сама.\r\n\r\n" +
 		"Happ и приложение Paper выключи.\r\n" +
 		"Папка: " + u.dest + "\r\n"
 	_ = os.WriteFile(filepath.Join(u.dest, "README.txt"), []byte(readme), 0644)
@@ -260,77 +240,59 @@ func (u *ui) fail(msg string) {
 }
 
 func (u *ui) layout(gtx layout.Context) layout.Dimensions {
-	return layout.UniformInset(unit.Dp(32)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	return layout.UniformInset(unit.Dp(28)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				t := material.H3(u.th, "Ply")
-				t.Color = colFg
-				t.Font.Style = font.Italic
-				return t.Layout(gtx)
+				return plyui.Title(u.th, "Ply").Layout(gtx)
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(6)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				line := "Установщик Windows  ·  VPN-туннель  ·  Xray внутри"
 				if u.oldVer != "" && u.oldVer != core.Version {
 					line = "Обновление " + u.oldVer + " → " + core.Version + ". Ссылка Paper останется."
 				}
 				b := material.Body2(u.th, line)
-				b.Color = colMuted
+				b.Color = plyui.Muted
 				return b.Layout(gtx)
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return roundPanel(gtx, func(gtx layout.Context) layout.Dimensions {
+				return plyui.Card(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							l := material.Caption(u.th, "ПАПКА")
-							l.Color = colSubtle
+							l.Color = plyui.Dim
 							return l.Layout(gtx)
 						}),
 						layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							t := material.Body1(u.th, u.dest)
-							t.Color = colFg
+							t.Color = plyui.Fg
 							return t.Layout(gtx)
 						}),
 					)
 				})
-			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				if u.stage != stepWelcome {
-					return layout.Dimensions{}
-				}
-				how := "Поставлю в Program Files. Потом ищи Ply в меню Пуск — как Telegram, не в папке.\nКрестик не гасит VPN. Новые версии Ply скачает сама."
-				t := material.Body2(u.th, how)
-				t.Color = colMuted
-				return t.Layout(gtx)
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if u.stage != stepWelcome {
 					return layout.Dimensions{}
 				}
-				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						cb := material.CheckBox(u.th, &u.desk, "Ярлык на рабочем столе")
-						cb.Color = colMuted
-						cb.IconColor = colAccent
-						return cb.Layout(gtx)
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						cb := material.CheckBox(u.th, &u.menu, "Меню Пуск — плитка Ply")
-						cb.Color = colMuted
-						cb.IconColor = colAccent
-						return cb.Layout(gtx)
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						cb := material.CheckBox(u.th, &u.auto, "Автозапуск с Windows")
-						cb.Color = colMuted
-						cb.IconColor = colAccent
-						return cb.Layout(gtx)
-					}),
-				)
+				return plyui.Card(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return plyui.SwitchRow(gtx, u.th, &u.desk, "Ярлык на рабочем столе", "")
+						}),
+						layout.Rigid(plyui.Hairline),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return plyui.SwitchRow(gtx, u.th, &u.menu, "Меню Пуск — плитка Ply", "")
+						}),
+						layout.Rigid(plyui.Hairline),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return plyui.SwitchRow(gtx, u.th, &u.auto, "Автозапуск с Windows", "с правами администратора")
+						}),
+					)
+				})
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -340,7 +302,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						t := material.Body2(u.th, u.status)
-						t.Color = colMuted
+						t.Color = plyui.Muted
 						return t.Layout(gtx)
 					}),
 					layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
@@ -353,8 +315,8 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				if u.stage != stepDone {
 					return layout.Dimensions{}
 				}
-				t := material.Body2(u.th, "Ply в Program Files и в меню Пуск.\nЗапусти, включи VPN, крестик — в трей.")
-				t.Color = colOk
+				t := material.Body2(u.th, "Ply в Program Files и в меню Пуск.\nЗапусти, кнопка питания — VPN, крестик — в трей.")
+				t.Color = plyui.Ok
 				return t.Layout(gtx)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -362,48 +324,38 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 					return layout.Dimensions{}
 				}
 				t := material.Body2(u.th, u.err)
-				t.Color = colErr
+				t.Color = plyui.Err
 				return t.Layout(gtx)
 			}),
 			layout.Flexed(1, layout.Spacer{}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				switch {
 				case !u.admin && u.stage == stepWelcome:
-					return primaryBtn(gtx, u.th, &u.elevate, "Запросить права")
+					return plyui.Primary(gtx, u.th, &u.elevate, "Запросить права")
 				case u.stage == stepWork:
 					t := material.Body2(u.th, "Не закрывай окно")
-					t.Color = colSubtle
+					t.Color = plyui.Dim
 					t.Alignment = text.Middle
 					return t.Layout(gtx)
 				case u.stage == stepDone:
-					return primaryBtn(gtx, u.th, &u.launch, "Запустить Ply")
+					return plyui.Primary(gtx, u.th, &u.launch, "Запустить Ply")
 				default:
 					label := "Установить"
 					if u.oldVer != "" {
 						label = "Обновить до " + core.Version
 					}
-					return primaryBtn(gtx, u.th, &u.install, label)
+					return plyui.Primary(gtx, u.th, &u.install, label)
 				}
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				t := material.Caption(u.th, fmt.Sprintf("Ply  ·  v%s  ·  Paper  ·  Xray TUN", core.Version))
-				t.Color = colSubtle
+				t.Color = plyui.Dim
 				t.Alignment = text.Middle
 				return t.Layout(gtx)
 			}),
 		)
 	})
-}
-
-func primaryBtn(gtx layout.Context, th *material.Theme, click *widget.Clickable, label string) layout.Dimensions {
-	btn := material.Button(th, click, label)
-	btn.Background = colAccent
-	btn.Color = colInk
-	btn.CornerRadius = unit.Dp(10)
-	btn.Inset = layout.UniformInset(unit.Dp(14))
-	gtx.Constraints.Min.X = gtx.Constraints.Max.X
-	return btn.Layout(gtx)
 }
 
 func progressBar(gtx layout.Context, p float32) layout.Dimensions {
@@ -416,26 +368,11 @@ func progressBar(gtx layout.Context, p float32) layout.Dimensions {
 	h := gtx.Dp(6)
 	w := gtx.Constraints.Max.X
 	rr := clip.UniformRRect(image.Rect(0, 0, w, h), h/2)
-	paint.FillShape(gtx.Ops, colLine, rr.Op(gtx.Ops))
+	paint.FillShape(gtx.Ops, plyui.Line, rr.Op(gtx.Ops))
 	fw := int(float32(w) * p)
 	if fw > 0 {
 		fr := clip.UniformRRect(image.Rect(0, 0, fw, h), h/2)
-		paint.FillShape(gtx.Ops, colAccent, fr.Op(gtx.Ops))
+		paint.FillShape(gtx.Ops, plyui.Accent, fr.Op(gtx.Ops))
 	}
 	return layout.Dimensions{Size: image.Pt(w, h)}
-}
-
-func roundPanel(gtx layout.Context, w layout.Widget) layout.Dimensions {
-	macro := op.Record(gtx.Ops)
-	dims := layout.UniformInset(unit.Dp(16)).Layout(gtx, w)
-	call := macro.Stop()
-	r := image.Rectangle{Max: dims.Size}
-	defer clip.UniformRRect(r, 14).Push(gtx.Ops).Pop()
-	paint.Fill(gtx.Ops, colPanel)
-	paint.FillShape(gtx.Ops, colLine, clip.Stroke{
-		Path:  clip.UniformRRect(r, 14).Path(gtx.Ops),
-		Width: 1,
-	}.Op())
-	call.Add(gtx.Ops)
-	return dims
 }

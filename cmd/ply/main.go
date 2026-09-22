@@ -14,8 +14,6 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/f32"
-	"gioui.org/font"
-	"gioui.org/font/gofont"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
@@ -27,23 +25,7 @@ import (
 	"gioui.org/widget/material"
 
 	"ply/internal/core"
-)
-
-var (
-	colBg     = color.NRGBA{R: 10, G: 10, B: 11, A: 255}
-	colPanel  = color.NRGBA{R: 18, G: 18, B: 20, A: 255}
-	colField  = color.NRGBA{R: 12, G: 12, B: 14, A: 255}
-	colFg     = color.NRGBA{R: 244, G: 244, B: 245, A: 255}
-	colMuted  = color.NRGBA{R: 161, G: 161, B: 170, A: 255}
-	colSubtle = color.NRGBA{R: 113, G: 113, B: 122, A: 255}
-	colLine   = color.NRGBA{R: 244, G: 244, B: 245, A: 28}
-	colLine2  = color.NRGBA{R: 244, G: 244, B: 245, A: 48}
-	colAccent = color.NRGBA{R: 200, G: 204, B: 212, A: 255}
-	colInk    = color.NRGBA{R: 10, G: 10, B: 11, A: 255}
-	colOk     = color.NRGBA{R: 138, G: 163, B: 138, A: 255}
-	colOkDim  = color.NRGBA{R: 138, G: 163, B: 138, A: 40}
-	colErr    = color.NRGBA{R: 193, G: 123, B: 123, A: 255}
-	colErrDim = color.NRGBA{R: 193, G: 123, B: 123, A: 28}
+	plyui "ply/internal/ui"
 )
 
 type ui struct {
@@ -82,7 +64,7 @@ func main() {
 		w := new(app.Window)
 		w.Option(
 			app.Title(core.WindowTitle),
-			app.Size(unit.Dp(440), unit.Dp(780)),
+			app.Size(unit.Dp(440), unit.Dp(760)),
 			app.MinSize(unit.Dp(400), unit.Dp(640)),
 		)
 		if err := run(w); err != nil {
@@ -94,12 +76,7 @@ func main() {
 }
 
 func run(w *app.Window) error {
-	th := material.NewTheme()
-	th.Shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
-	th.Palette.Bg = colBg
-	th.Palette.Fg = colFg
-	th.Palette.ContrastBg = colAccent
-	th.Palette.ContrastFg = colInk
+	th := plyui.NewTheme()
 
 	u := &ui{w: w, th: th, admin: core.IsAdmin(), status: "ожидание", t0: time.Now()}
 	u.url.SingleLine = true
@@ -148,7 +125,7 @@ func run(w *app.Window) error {
 				})
 			}
 			u.update(gtx)
-			paint.Fill(gtx.Ops, colBg)
+			paint.Fill(gtx.Ops, plyui.Bg)
 			u.layout(gtx)
 			if u.live || u.busy {
 				gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(80 * time.Millisecond)})
@@ -327,12 +304,10 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return layout.Center.Layout(gtx, u.layoutPower)
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
 			layout.Rigid(u.layoutPowerCaption),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(22)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(24)}.Layout),
 			layout.Rigid(u.layoutURL),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
-			layout.Rigid(u.layoutOptions),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 			layout.Rigid(u.layoutMeta),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
@@ -344,48 +319,57 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 }
 
 func (u *ui) layoutHeader(gtx layout.Context) layout.Dimensions {
-	return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			t := material.H3(u.th, "Ply")
-			t.Color = colFg
-			t.Font.Style = font.Italic
-			t.Font.Weight = font.Medium
-			return t.Layout(gtx)
-		}),
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			label := u.status
-			fg, bg := colMuted, colPanel
-			switch {
-			case u.err != "":
-				fg, bg, label = colErr, colErrDim, "ошибка"
-			case u.busy:
-				fg, bg, label = colMuted, colPanel, "подключаю"
-			case u.live:
-				fg, bg = colOk, colOkDim
-			}
-			return pill(gtx, u.th, label, fg, bg)
+			return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					return plyui.Title(u.th, "Ply").Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					label := u.status
+					fg, bg := plyui.Muted, plyui.Subtle
+					switch {
+					case u.err != "":
+						fg, bg, label = plyui.Err, plyui.ErrDim, "ошибка"
+					case u.busy:
+						fg, bg, label = plyui.Muted, plyui.Subtle, "подключаю"
+					case u.live:
+						fg, bg = plyui.Ok, plyui.OkDim
+					}
+					return plyui.Pill(gtx, u.th, label, fg, bg)
+				}),
+			)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			t := material.Body2(u.th, "Windows-клиент Paper. Туннель, не системный прокси. Ссылка из кабинета — ключ чистится сам.")
+			t.Color = plyui.Muted
+			return t.Layout(gtx)
 		}),
 	)
 }
 
 func (u *ui) layoutPower(gtx layout.Context) layout.Dimensions {
-	d := gtx.Dp(124)
+	d := gtx.Dp(112)
 	gtx.Constraints = layout.Exact(image.Pt(d, d))
 	return u.power.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)
 		defer clip.Ellipse{Max: image.Pt(d, d)}.Push(gtx.Ops).Pop()
-		bg := colPanel
-		ring := colLine2
-		icon := colFg
+		bg := plyui.Panel
+		ring := plyui.Line2
+		icon := plyui.Fg
 		if u.live {
 			bg = color.NRGBA{R: 16, G: 20, B: 16, A: 255}
-			ring = colOk
-			icon = colOk
+			ring = plyui.Ok
+			icon = plyui.Ok
 			pulse := 0.5 + 0.5*math.Sin(time.Since(u.t0).Seconds()*2.2)
 			ring.A = uint8(90 + 80*pulse)
 		} else if u.err != "" {
-			ring = colErr
-			icon = colErr
+			ring = plyui.Err
+			icon = plyui.Err
+		} else if u.busy {
+			ring = plyui.Muted
+			icon = plyui.Muted
 		}
 		paint.Fill(gtx.Ops, bg)
 		paint.FillShape(gtx.Ops, ring, clip.Stroke{
@@ -393,31 +377,39 @@ func (u *ui) layoutPower(gtx layout.Context) layout.Dimensions {
 			Width: float32(gtx.Dp(1.5)),
 		}.Op())
 		if u.live {
-			m := gtx.Dp(7)
+			m := gtx.Dp(6)
 			inner := image.Rect(m, m, d-m, d-m)
-			paint.FillShape(gtx.Ops, color.NRGBA{R: 138, G: 163, B: 138, A: 70}, clip.Stroke{
+			paint.FillShape(gtx.Ops, color.NRGBA{R: 138, G: 163, B: 138, A: 90}, clip.Stroke{
 				Path:  clip.Ellipse{Min: inner.Min, Max: inner.Max}.Path(gtx.Ops),
 				Width: 1,
 			}.Op())
 		}
-		drawPowerIcon(gtx.Ops, icon, d, u.live)
+		if u.busy {
+			drawBusyArc(gtx.Ops, d, time.Since(u.t0).Seconds())
+		} else {
+			drawPowerIcon(gtx.Ops, icon, d)
+		}
 		return layout.Dimensions{Size: image.Pt(d, d)}
 	})
 }
 
 func (u *ui) layoutPowerCaption(gtx layout.Context) layout.Dimensions {
-	msg := "нажми, чтобы включить"
-	c := colSubtle
+	msg := "Вставь ссылку, затем нажми"
+	c := plyui.Muted
 	switch {
 	case !u.admin:
 		msg = "нужны права администратора"
-		c = colErr
+		c = plyui.Err
 	case u.busy:
 		msg = "поднимаю туннель…"
-		c = colMuted
+		c = plyui.Muted
 	case u.live:
-		msg = "нажми, чтобы выключить"
-		c = colMuted
+		if u.detail != "" {
+			msg = u.detail
+		} else {
+			msg = "нажми, чтобы выключить"
+		}
+		c = plyui.Muted
 	}
 	t := material.Body2(u.th, msg)
 	t.Color = c
@@ -426,37 +418,40 @@ func (u *ui) layoutPowerCaption(gtx layout.Context) layout.Dimensions {
 }
 
 func (u *ui) layoutURL(gtx layout.Context) layout.Dimensions {
-	return panel(gtx, 20, func(gtx layout.Context) layout.Dimensions {
+	return plyui.Card(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				l := material.Caption(u.th, "ССЫЛКА PAPER")
-				l.Color = colSubtle
-				return l.Layout(gtx)
+				t := material.Body2(u.th, "Ссылка Paper")
+				t.Color = plyui.Fg
+				return t.Layout(gtx)
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return field(gtx, 10, func(gtx layout.Context) layout.Dimensions {
-					ed := material.Editor(u.th, &u.url, "https://…azure-api.net/…")
-					ed.Color = colFg
-					ed.HintColor = colSubtle
+				return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return plyui.SwitchLabel(gtx, u.th, &u.split, "Россия мимо")
+					}),
+					layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return plyui.SwitchLabel(gtx, u.th, &u.auto, "Автозапуск")
+					}),
+				)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return plyui.Input(gtx, func(gtx layout.Context) layout.Dimensions {
+					ed := material.Editor(u.th, &u.url, "https://…azure-api.net/…  или  vless://")
+					ed.Color = plyui.Fg
+					ed.HintColor = plyui.Dim
+					ed.TextSize = 13
 					return ed.Layout(gtx)
 				})
 			}),
-		)
-	})
-}
-
-func (u *ui) layoutOptions(gtx layout.Context) layout.Dimensions {
-	return panel(gtx, 20, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return optionRow(gtx, u.th, &u.split, "Россия напрямую", ".ru  ·  .рф  ·  Яндекс  ·  VK")
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return hairline(gtx)
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return optionRow(gtx, u.th, &u.auto, "Автозапуск", "вместе с Windows, с правами")
+				t := material.Caption(u.th, "Хвост #PaperVPN и второй # отрежутся сами. Россия мимо — .ru, .рф, Яндекс, VK. Остальное через Paper.")
+				t.Color = plyui.Dim
+				return t.Layout(gtx)
 			}),
 		)
 	})
@@ -464,87 +459,82 @@ func (u *ui) layoutOptions(gtx layout.Context) layout.Dimensions {
 
 func (u *ui) layoutMeta(gtx layout.Context) layout.Dimensions {
 	if u.err != "" {
-		return panelTint(gtx, 20, colErrDim, func(gtx layout.Context) layout.Dimensions {
+		return plyui.CardTint(gtx, plyui.ErrDim, func(gtx layout.Context) layout.Dimensions {
 			t := material.Body2(u.th, u.err)
-			t.Color = colErr
+			t.Color = plyui.Err
 			return t.Layout(gtx)
 		})
 	}
 	if !u.admin {
-		return primaryBtn(gtx, u.th, &u.elevate, "Запросить права")
+		return plyui.Primary(gtx, u.th, &u.elevate, "Запросить права")
 	}
-	if u.live {
-		ip := u.exitIP
-		if ip == "" {
-			ip = "проверяю…"
-		}
-		sni := ""
-		if u.node != nil {
-			sni = u.node.SNI
-		}
-		route := "полный туннель"
-		if u.split.Value {
-			route = "Россия мимо · остальное в туннель"
-		}
-		return panel(gtx, 20, func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					l := material.Caption(u.th, "ВЫХОД")
-					l.Color = colSubtle
-					return l.Layout(gtx)
-				}),
-				layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					t := material.H6(u.th, ip)
-					t.Color = colOk
-					t.Font.Weight = font.Medium
-					return t.Layout(gtx)
-				}),
-				layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					t := material.Caption(u.th, route)
-					t.Color = colMuted
-					return t.Layout(gtx)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if u.detail == "" {
-						return layout.Dimensions{}
-					}
-					line := "узел  " + u.detail
-					if sni != "" {
-						line += "  ·  " + sni
-					}
-					t := material.Caption(u.th, line)
-					t.Color = colSubtle
-					return t.Layout(gtx)
-				}),
-				layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return ghostBtn(gtx, u.th, &u.refresh, "Обновить ключ")
-				}),
-			)
-		})
+	if !u.live {
+		return layout.Dimensions{}
 	}
-	return panel(gtx, 20, func(gtx layout.Context) layout.Dimensions {
-		t := material.Body2(u.th, "Пока выключено Windows сидит на Wi‑Fi — так и должно. Happ и приложение Paper выключи.")
-		t.Color = colSubtle
-		return t.Layout(gtx)
+	ip := u.exitIP
+	if ip == "" {
+		ip = "проверяю…"
+	}
+	sni := ""
+	if u.node != nil {
+		sni = u.node.SNI
+	}
+	route := "полный туннель"
+	if u.split.Value {
+		route = "Россия мимо · остальное в туннель"
+	}
+	return plyui.Card(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				l := material.Caption(u.th, "ВЫХОД")
+				l.Color = plyui.Dim
+				return l.Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				t := material.H6(u.th, ip)
+				t.Color = plyui.Ok
+				return t.Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				t := material.Caption(u.th, route)
+				t.Color = plyui.Muted
+				return t.Layout(gtx)
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if u.detail == "" {
+					return layout.Dimensions{}
+				}
+				line := "узел  " + u.detail
+				if sni != "" {
+					line += "  ·  " + sni
+				}
+				t := material.Caption(u.th, line)
+				t.Color = plyui.Dim
+				return t.Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return plyui.Ghost(gtx, u.th, &u.refresh, "Обновить ключ")
+			}),
+		)
 	})
 }
 
 func (u *ui) layoutUpdate(gtx layout.Context) layout.Dimensions {
 	if u.upd != nil {
-		return panel(gtx, 20, func(gtx layout.Context) layout.Dimensions {
+		return plyui.Card(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					t := material.Body2(u.th, "Вышла v"+u.upd.Tag)
-					t.Color = colFg
+					t.Color = plyui.Fg
 					return t.Layout(gtx)
 				}),
 				layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					t := material.Caption(u.th, "можно поставить из приложения, ссылка Paper останется")
-					t.Color = colSubtle
+					t.Color = plyui.Dim
 					return t.Layout(gtx)
 				}),
 				layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
@@ -553,30 +543,12 @@ func (u *ui) layoutUpdate(gtx layout.Context) layout.Dimensions {
 					if u.updBusy {
 						label = "Скачиваю установщик…"
 					}
-					return primaryBtn(gtx, u.th, &u.applyUpd, label)
+					return plyui.Primary(gtx, u.th, &u.applyUpd, label)
 				}),
 			)
 		})
 	}
-	label := "Проверить обновления"
-	if u.updBusy {
-		label = "Ищу на GitHub…"
-	}
-	if u.updNote != "" {
-		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return quietBtn(gtx, u.th, &u.checkUpd, label)
-			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				t := material.Caption(u.th, u.updNote)
-				t.Color = colSubtle
-				t.Alignment = text.Middle
-				return t.Layout(gtx)
-			}),
-		)
-	}
-	return quietBtn(gtx, u.th, &u.checkUpd, label)
+	return layout.Dimensions{}
 }
 
 func (u *ui) layoutFooter(gtx layout.Context) layout.Dimensions {
@@ -584,156 +556,48 @@ func (u *ui) layoutFooter(gtx layout.Context) layout.Dimensions {
 	if runtime.GOOS != "windows" {
 		hint = "Ply  ·  v" + core.Version
 	}
-	t := material.Caption(u.th, hint)
-	t.Color = colSubtle
-	t.Alignment = text.Middle
-	return t.Layout(gtx)
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			t := material.Caption(u.th, hint)
+			t.Color = plyui.Dim
+			t.Alignment = text.Middle
+			return t.Layout(gtx)
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if u.upd != nil {
+				return layout.Dimensions{}
+			}
+			label := "проверить обновления"
+			if u.updBusy {
+				label = "ищу на GitHub…"
+			} else if u.updNote != "" {
+				label = u.updNote
+			}
+			return plyui.Quiet(gtx, u.th, &u.checkUpd, label)
+		}),
+	)
 }
 
-func optionRow(gtx layout.Context, th *material.Theme, b *widget.Bool, title, sub string) layout.Dimensions {
-	return layout.Inset{Top: unit.Dp(4), Bottom: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
-			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						t := material.Body1(th, title)
-						t.Color = colFg
-						return t.Layout(gtx)
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						t := material.Caption(th, sub)
-						t.Color = colSubtle
-						return t.Layout(gtx)
-					}),
-				)
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				sw := material.Switch(th, b, title)
-				sw.Color.Enabled = colOk
-				sw.Color.Disabled = colLine2
-				return sw.Layout(gtx)
-			}),
-		)
-	})
-}
-
-func pill(gtx layout.Context, th *material.Theme, label string, fg, bg color.NRGBA) layout.Dimensions {
-	macro := op.Record(gtx.Ops)
-	dims := layout.Inset{Top: unit.Dp(5), Bottom: unit.Dp(5), Left: unit.Dp(10), Right: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		t := material.Caption(th, label)
-		t.Color = fg
-		return t.Layout(gtx)
-	})
-	call := macro.Stop()
-	r := image.Rectangle{Max: dims.Size}
-	defer clip.UniformRRect(r, dims.Size.Y/2).Push(gtx.Ops).Pop()
-	paint.Fill(gtx.Ops, bg)
-	call.Add(gtx.Ops)
-	return dims
-}
-
-func panel(gtx layout.Context, rad int, w layout.Widget) layout.Dimensions {
-	return panelTint(gtx, rad, colPanel, w)
-}
-
-func panelTint(gtx layout.Context, rad int, bg color.NRGBA, w layout.Widget) layout.Dimensions {
-	macro := op.Record(gtx.Ops)
-	dims := layout.UniformInset(unit.Dp(16)).Layout(gtx, w)
-	call := macro.Stop()
-	r := image.Rectangle{Max: dims.Size}
-	rr := gtx.Dp(unit.Dp(rad))
-	defer clip.UniformRRect(r, rr).Push(gtx.Ops).Pop()
-	paint.Fill(gtx.Ops, bg)
-	paint.FillShape(gtx.Ops, colLine, clip.Stroke{
-		Path:  clip.UniformRRect(r, rr).Path(gtx.Ops),
-		Width: 1,
-	}.Op())
-	call.Add(gtx.Ops)
-	return dims
-}
-
-func field(gtx layout.Context, rad int, w layout.Widget) layout.Dimensions {
-	macro := op.Record(gtx.Ops)
-	dims := layout.Inset{Top: unit.Dp(10), Bottom: unit.Dp(10), Left: unit.Dp(12), Right: unit.Dp(12)}.Layout(gtx, w)
-	call := macro.Stop()
-	r := image.Rectangle{Max: dims.Size}
-	rr := gtx.Dp(unit.Dp(rad))
-	defer clip.UniformRRect(r, rr).Push(gtx.Ops).Pop()
-	paint.Fill(gtx.Ops, colField)
-	paint.FillShape(gtx.Ops, colLine, clip.Stroke{
-		Path:  clip.UniformRRect(r, rr).Path(gtx.Ops),
-		Width: 1,
-	}.Op())
-	call.Add(gtx.Ops)
-	return dims
-}
-
-func hairline(gtx layout.Context) layout.Dimensions {
-	h := gtx.Dp(1)
-	w := gtx.Constraints.Max.X
-	defer clip.Rect{Max: image.Pt(w, h)}.Push(gtx.Ops).Pop()
-	paint.Fill(gtx.Ops, colLine)
-	return layout.Dimensions{Size: image.Pt(w, h+gtx.Dp(8))}
-}
-
-func primaryBtn(gtx layout.Context, th *material.Theme, click *widget.Clickable, label string) layout.Dimensions {
-	btn := material.Button(th, click, label)
-	btn.Background = colAccent
-	btn.Color = colInk
-	btn.CornerRadius = unit.Dp(12)
-	btn.Inset = layout.UniformInset(unit.Dp(12))
-	gtx.Constraints.Min.X = gtx.Constraints.Max.X
-	return btn.Layout(gtx)
-}
-
-func ghostBtn(gtx layout.Context, th *material.Theme, click *widget.Clickable, label string) layout.Dimensions {
-	btn := material.Button(th, click, label)
-	btn.Background = colField
-	btn.Color = colFg
-	btn.CornerRadius = unit.Dp(12)
-	btn.Inset = layout.UniformInset(unit.Dp(10))
-	gtx.Constraints.Min.X = gtx.Constraints.Max.X
-	return btn.Layout(gtx)
-}
-
-func quietBtn(gtx layout.Context, th *material.Theme, click *widget.Clickable, label string) layout.Dimensions {
-	btn := material.Button(th, click, label)
-	btn.Background = color.NRGBA{}
-	btn.Color = colSubtle
-	btn.CornerRadius = unit.Dp(8)
-	btn.Inset = layout.UniformInset(unit.Dp(8))
-	gtx.Constraints.Min.X = gtx.Constraints.Max.X
-	return btn.Layout(gtx)
-}
-
-func drawPowerIcon(ops *op.Ops, col color.NRGBA, d int, live bool) {
+func drawPowerIcon(ops *op.Ops, col color.NRGBA, d int) {
 	cx := float32(d) / 2
 	cy := float32(d) / 2
 	s := float32(d)
-	w := s * 0.045
-	if live {
-		r := int(s * 0.07)
-		min := image.Pt(int(cx)-r, int(cy)-r)
-		max := image.Pt(int(cx)+r, int(cy)+r)
-		defer clip.Ellipse{Min: min, Max: max}.Push(ops).Pop()
-		paint.Fill(ops, col)
-		return
-	}
+	w := s * 0.042
 	var p clip.Path
 	p.Begin(ops)
 	p.MoveTo(f32.Pt(cx, cy-s*0.22))
-	p.LineTo(f32.Pt(cx, cy-s*0.02))
+	p.LineTo(f32.Pt(cx, cy-s*0.01))
 	stem := p.End()
 	paint.FillShape(ops, col, clip.Stroke{Path: stem, Width: w}.Op())
 
 	p.Begin(ops)
 	r := s * 0.18
-	start, end := 130.0, 410.0
-	steps := 28
+	start, end := 128.0, 412.0
+	steps := 32
 	for i := 0; i <= steps; i++ {
 		a := (start + (end-start)*float64(i)/float64(steps)) * math.Pi / 180
 		x := cx + r*float32(math.Cos(a))
-		y := cy + r*0.08 + r*float32(math.Sin(a))
+		y := cy + r*0.06 + r*float32(math.Sin(a))
 		if i == 0 {
 			p.MoveTo(f32.Pt(x, y))
 		} else {
@@ -742,4 +606,28 @@ func drawPowerIcon(ops *op.Ops, col color.NRGBA, d int, live bool) {
 	}
 	arc := p.End()
 	paint.FillShape(ops, col, clip.Stroke{Path: arc, Width: w}.Op())
+}
+
+func drawBusyArc(ops *op.Ops, d int, sec float64) {
+	cx := float32(d) / 2
+	cy := float32(d) / 2
+	s := float32(d)
+	r := s * 0.18
+	w := s * 0.042
+	rot := sec * 240
+	var p clip.Path
+	p.Begin(ops)
+	steps := 20
+	for i := 0; i <= steps; i++ {
+		a := (rot + float64(i)*12) * math.Pi / 180
+		x := cx + r*float32(math.Cos(a))
+		y := cy + r*float32(math.Sin(a))
+		if i == 0 {
+			p.MoveTo(f32.Pt(x, y))
+		} else {
+			p.LineTo(f32.Pt(x, y))
+		}
+	}
+	arc := p.End()
+	paint.FillShape(ops, plyui.Muted, clip.Stroke{Path: arc, Width: w}.Op())
 }
