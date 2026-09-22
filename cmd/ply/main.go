@@ -222,9 +222,9 @@ func (u *ui) doConnect(src string, auto bool) {
 	if s.Split {
 		u.status = "Россия мимо"
 	} else {
-		u.status = "полный туннель"
+		u.status = s.Node.Label()
 	}
-	u.detail = fmt.Sprintf("%s:%d", s.Node.Host, s.Node.Port)
+	u.detail = fmt.Sprintf("%s  %s:%d", s.Node.Label(), s.Node.Host, s.Node.Port)
 	u.err = ""
 	u.busy = false
 	if auto {
@@ -342,7 +342,7 @@ func (u *ui) layoutHeader(gtx layout.Context) layout.Dimensions {
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			t := material.Body2(u.th, "Windows-клиент Paper. Туннель, не системный прокси. Ссылка из кабинета — ключ чистится сам.")
+			t := material.Body2(u.th, "Windows VPN. Paper, vless, vmess, trojan или ss. Туннель, не системный прокси.")
 			t.Color = plyui.Muted
 			return t.Layout(gtx)
 		}),
@@ -421,7 +421,7 @@ func (u *ui) layoutURL(gtx layout.Context) layout.Dimensions {
 	return plyui.Card(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				t := material.Body2(u.th, "Ссылка Paper")
+				t := material.Body2(u.th, "Ключ")
 				t.Color = plyui.Fg
 				return t.Layout(gtx)
 			}),
@@ -440,7 +440,7 @@ func (u *ui) layoutURL(gtx layout.Context) layout.Dimensions {
 			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return plyui.Input(gtx, func(gtx layout.Context) layout.Dimensions {
-					ed := material.Editor(u.th, &u.url, "https://…azure-api.net/…  или  vless://")
+					ed := material.Editor(u.th, &u.url, "vless://  vmess://  trojan://  ss://  или https://…")
 					ed.Color = plyui.Fg
 					ed.HintColor = plyui.Dim
 					ed.TextSize = 13
@@ -449,7 +449,7 @@ func (u *ui) layoutURL(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				t := material.Caption(u.th, "Хвост #PaperVPN и второй # отрежутся сами. Россия мимо — .ru, .рф, Яндекс, VK. Остальное через Paper.")
+				t := material.Caption(u.th, "Paper, любой vless/vmess/trojan/ss. Подписка — первая строка. #хвост отрежется. Россия мимо — .ru/.рф/Яндекс/VK.")
 				t.Color = plyui.Dim
 				return t.Layout(gtx)
 			}),
@@ -476,12 +476,17 @@ func (u *ui) layoutMeta(gtx layout.Context) layout.Dimensions {
 		ip = "проверяю…"
 	}
 	sni := ""
+	proto := ""
 	if u.node != nil {
 		sni = u.node.SNI
+		proto = u.node.Label()
 	}
 	route := "полный туннель"
 	if u.split.Value {
 		route = "Россия мимо · остальное в туннель"
+	}
+	if proto != "" {
+		route = proto + "  ·  " + route
 	}
 	return plyui.Card(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,

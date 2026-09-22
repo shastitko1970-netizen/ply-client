@@ -6,17 +6,58 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
 
-const UA = "Ply/1.6"
+const UA = "Ply/1.7"
 
 type Node struct {
-	UUID, Host, Flow, Security, Network, SNI, FP, PBK, SID, Spx, Enc string
-	Port                                                             int
+	Proto    string
+	UUID     string
+	Password string
+	Method   string
+	Host     string
+	Port     int
+	Flow     string
+	Security string
+	Network  string
+	SNI      string
+	FP       string
+	PBK      string
+	SID      string
+	Spx      string
+	Enc      string
+	Path     string
+	HostHdr  string
+	ALPN     string
+	Service  string
+	Mode     string
+	Header   string
+	AlterID  int
+	Insecure bool
+	Remark   string
+}
+
+func (n *Node) Label() string {
+	if n == nil {
+		return ""
+	}
+	p := n.Proto
+	if p == "" {
+		p = "vless"
+	}
+	extra := n.Network
+	if n.Security != "" && n.Security != "none" {
+		if extra != "" {
+			extra += "+"
+		}
+		extra += n.Security
+	}
+	if extra == "" {
+		return p
+	}
+	return p + " · " + extra
 }
 
 func StripSubHash(raw string) string {
@@ -27,66 +68,6 @@ func StripSubHash(raw string) string {
 		}
 	}
 	return t
-}
-
-func FirstVLESS(body string) (string, error) {
-	body = strings.TrimSpace(body)
-	if body == "" {
-		return "", fmt.Errorf("подписка пустая")
-	}
-	for _, line := range strings.Split(body, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "vless://") {
-			return line, nil
-		}
-	}
-	if strings.HasPrefix(body, "vless://") {
-		return body, nil
-	}
-	return "", fmt.Errorf("в ответе нет vless://")
-}
-
-func ParseVLESS(raw string) (*Node, error) {
-	raw = strings.TrimSpace(raw)
-	if !strings.HasPrefix(raw, "vless://") {
-		return nil, fmt.Errorf("не vless")
-	}
-	if i := strings.Index(raw, "#"); i >= 0 {
-		raw = raw[:i]
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return nil, fmt.Errorf("разобрать vless: %w", err)
-	}
-	port := 443
-	if u.Port() != "" {
-		port, _ = strconv.Atoi(u.Port())
-	}
-	q := u.Query()
-	n := &Node{
-		UUID:     u.User.Username(),
-		Host:     u.Hostname(),
-		Port:     port,
-		Flow:     q.Get("flow"),
-		Security: q.Get("security"),
-		Network:  q.Get("type"),
-		SNI:      firstNonEmpty(q.Get("sni"), q.Get("serverName")),
-		FP:       firstNonEmpty(q.Get("fp"), q.Get("fingerprint"), "firefox"),
-		PBK:      firstNonEmpty(q.Get("pbk"), q.Get("publicKey")),
-		SID:      q.Get("sid"),
-		Spx:      q.Get("spx"),
-		Enc:      firstNonEmpty(q.Get("encryption"), "none"),
-	}
-	if n.Network == "tcp" || n.Network == "" {
-		n.Network = "raw"
-	}
-	if n.UUID == "" || n.Host == "" || n.PBK == "" || n.Security != "reality" {
-		return nil, fmt.Errorf("битый ключ: uuid/host/pbk/reality")
-	}
-	if n.Flow == "" {
-		n.Flow = "xtls-rprx-vision"
-	}
-	return n, nil
 }
 
 func (n *Node) ServerIPv4() string {
@@ -134,25 +115,25 @@ func FetchSub(sub string) (string, error) {
 
 func Resolve(source string) (*Node, error) {
 	source = strings.TrimSpace(source)
-	var vless string
-	var err error
-	switch {
-	case strings.HasPrefix(source, "vless://"):
-		vless = source
-	case strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://"):
-		var body string
-		body, err = FetchSub(source)
-		if err != nil {
-			return nil, err
-		}
-		vless, err = FirstVLESS(body)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("нужна ссылка кабинета или vless://")
+	if err := rejectUnsupported(source); err != nil {
+		return nil, err
 	}
-	return ParseVLESS(vless)
+	switch {
+	case isShare(source):
+		return ParseLink(source)
+	case strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://"):
+		body, err := FetchSub(source)
+		if err != nil {
+			return nil, err
+		}
+		line, err := FirstShareLine(expandSubBody(body))
+		if err != nil {
+			return nil, err
+		}
+		return ParseLink(line)
+	default:
+		return nil, fmt.Errorf("нужна ссылка подписки или ключ vless/vmess/trojan/ss")
+	}
 }
 
 func RenderXray(n *Node, port int, split bool) ([]byte, error) {
@@ -230,32 +211,7 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 			},
 		},
 		"outbounds": []any{
-			map[string]any{
-				"tag":      "proxy",
-				"protocol": "vless",
-				"settings": map[string]any{
-					"vnext": []any{
-						map[string]any{
-							"address": n.Host,
-							"port":    n.Port,
-							"users": []any{
-								map[string]any{
-									"id": n.UUID, "encryption": n.Enc, "flow": n.Flow,
-								},
-							},
-						},
-					},
-				},
-				"streamSettings": map[string]any{
-					"network":  n.Network,
-					"security": "reality",
-					"realitySettings": map[string]any{
-						"serverName": n.SNI, "fingerprint": n.FP, "publicKey": n.PBK,
-						"shortId": n.SID, "spiderX": n.Spx, "show": false,
-					},
-				},
-				"mux": map[string]any{"enabled": false, "concurrency": -1},
-			},
+			n.outbound(),
 			map[string]any{"tag": "direct", "protocol": "freedom"},
 			map[string]any{"tag": "block", "protocol": "blackhole"},
 		},
@@ -265,6 +221,184 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 		},
 	}
 	return json.MarshalIndent(cfg, "", "  ")
+}
+
+func (n *Node) outbound() map[string]any {
+	mux := map[string]any{"enabled": false, "concurrency": -1}
+	switch n.Proto {
+	case "vmess":
+		return map[string]any{
+			"tag":      "proxy",
+			"protocol": "vmess",
+			"settings": map[string]any{
+				"vnext": []any{
+					map[string]any{
+						"address": n.Host,
+						"port":    n.Port,
+						"users": []any{
+							map[string]any{
+								"id": n.UUID, "alterId": n.AlterID,
+								"security": firstNonEmpty(n.Enc, "auto"),
+							},
+						},
+					},
+				},
+			},
+			"streamSettings": n.streamSettings(),
+			"mux":            mux,
+		}
+	case "trojan":
+		return map[string]any{
+			"tag":      "proxy",
+			"protocol": "trojan",
+			"settings": map[string]any{
+				"servers": []any{
+					map[string]any{
+						"address": n.Host, "port": n.Port,
+						"password": firstNonEmpty(n.Password, n.UUID),
+					},
+				},
+			},
+			"streamSettings": n.streamSettings(),
+			"mux":            mux,
+		}
+	case "shadowsocks":
+		return map[string]any{
+			"tag":      "proxy",
+			"protocol": "shadowsocks",
+			"settings": map[string]any{
+				"servers": []any{
+					map[string]any{
+						"address": n.Host, "port": n.Port,
+						"method": n.Method, "password": n.Password,
+					},
+				},
+			},
+			"streamSettings": n.streamSettings(),
+			"mux":            mux,
+		}
+	default:
+		user := map[string]any{"id": n.UUID, "encryption": firstNonEmpty(n.Enc, "none")}
+		if n.Flow != "" {
+			user["flow"] = n.Flow
+		}
+		return map[string]any{
+			"tag":      "proxy",
+			"protocol": "vless",
+			"settings": map[string]any{
+				"vnext": []any{
+					map[string]any{
+						"address": n.Host,
+						"port":    n.Port,
+						"users":   []any{user},
+					},
+				},
+			},
+			"streamSettings": n.streamSettings(),
+			"mux":            mux,
+		}
+	}
+}
+
+func (n *Node) streamSettings() map[string]any {
+	netw := n.Network
+	if netw == "tcp" || netw == "" {
+		netw = "raw"
+	}
+	ss := map[string]any{"network": netw}
+
+	switch n.Security {
+	case "tls":
+		ss["security"] = "tls"
+		tls := map[string]any{"allowInsecure": n.Insecure}
+		if n.SNI != "" {
+			tls["serverName"] = n.SNI
+		}
+		if n.FP != "" {
+			tls["fingerprint"] = n.FP
+		}
+		if n.ALPN != "" {
+			parts := strings.Split(n.ALPN, ",")
+			alpn := make([]string, 0, len(parts))
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					alpn = append(alpn, p)
+				}
+			}
+			if len(alpn) > 0 {
+				tls["alpn"] = alpn
+			}
+		}
+		ss["tlsSettings"] = tls
+	case "reality":
+		ss["security"] = "reality"
+		ss["realitySettings"] = map[string]any{
+			"serverName":  n.SNI,
+			"fingerprint": firstNonEmpty(n.FP, "chrome"),
+			"publicKey":   n.PBK,
+			"shortId":     n.SID,
+			"spiderX":     n.Spx,
+			"show":        false,
+		}
+	default:
+		ss["security"] = "none"
+	}
+
+	switch netw {
+	case "ws":
+		ws := map[string]any{}
+		if n.Path != "" {
+			ws["path"] = n.Path
+		}
+		if n.HostHdr != "" {
+			ws["host"] = n.HostHdr
+		}
+		ss["wsSettings"] = ws
+	case "grpc":
+		grpc := map[string]any{"serviceName": n.Service}
+		if n.Mode == "multi" {
+			grpc["multiMode"] = true
+		}
+		ss["grpcSettings"] = grpc
+	case "httpupgrade":
+		hu := map[string]any{}
+		if n.Path != "" {
+			hu["path"] = n.Path
+		}
+		if n.HostHdr != "" {
+			hu["host"] = n.HostHdr
+		}
+		ss["httpupgradeSettings"] = hu
+	case "xhttp":
+		xh := map[string]any{}
+		if n.Path != "" {
+			xh["path"] = n.Path
+		}
+		if n.HostHdr != "" {
+			xh["host"] = n.HostHdr
+		}
+		if n.Mode != "" {
+			xh["mode"] = n.Mode
+		}
+		ss["xhttpSettings"] = xh
+	case "h2":
+		h2 := map[string]any{}
+		if n.Path != "" {
+			h2["path"] = n.Path
+		}
+		if n.HostHdr != "" {
+			h2["host"] = []string{n.HostHdr}
+		}
+		ss["httpSettings"] = h2
+	case "raw":
+		if n.Header == "http" {
+			ss["tcpSettings"] = map[string]any{
+				"header": map[string]any{"type": "http"},
+			}
+		}
+	}
+	return ss
 }
 
 func firstNonEmpty(ss ...string) string {
