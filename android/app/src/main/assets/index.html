@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Ply</title>
+<style>
+:root{--bg:#0a0a0b;--panel:#121214;--fg:#f4f4f5;--muted:#a1a1aa;--dim:#71717a;--line:rgba(244,244,245,.12);--accent:#c8ccd4;--ink:#0a0a0b;--ok:#8aa38a;--err:#c17b7b;--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--fg);font-family:-apple-system,"IBM Plex Sans","Segoe UI",sans-serif}
+body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom))}
+.head{display:flex;align-items:center;justify-content:space-between}
+.brand{font-family:Georgia,serif;font-style:italic;font-size:28px;letter-spacing:-.02em}
+.pill{border-radius:999px;padding:4px 10px;font-size:11px;background:#1a1a1e;color:var(--muted)}
+.pill.ok{background:rgba(138,163,138,.16);color:var(--ok)}
+.hero{display:flex;flex-direction:column;align-items:center;margin:18px 0 16px}
+.power{width:88px;height:88px;border-radius:50%;border:1px solid rgba(244,244,245,.22);background:var(--panel);color:var(--fg);display:grid;place-items:center;transition:transform .18s var(--ease),border-color .18s,background .18s,color .18s}
+.power.ok{color:var(--ok);border-color:rgba(138,163,138,.55);background:#101410;box-shadow:0 0 0 4px rgba(138,163,138,.12)}
+.power:active{transform:scale(.97)}
+.cap{margin-top:10px;text-align:center;color:var(--muted);font-size:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+.k{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.field{margin-top:6px;height:42px;width:100%;border:1px solid var(--line);border-radius:12px;background:#0c0c0e;color:var(--fg);padding:0 12px;font-size:14px}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px}
+.t{font-size:15px;font-weight:500}.s{margin-top:2px;font-size:12px;color:var(--dim)}
+.toggle{width:42px;height:24px;border:0;border-radius:999px;background:#1a1a1e;position:relative}
+.toggle.on{background:var(--accent)}
+.toggle i{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .18s var(--ease)}
+.toggle.on i{transform:translateX(18px);background:#0a0a0b}
+.err{color:var(--err);font-size:13px}
+</style>
+</head>
+<body>
+<div class="head">
+  <div class="brand">Ply</div>
+  <div id="pill" class="pill">выкл</div>
+</div>
+<div class="hero">
+  <button class="power" id="power" type="button" aria-label="Питание">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 2v10"/><path d="M8.5 4.6a8 8 0 1 0 7 0"/></svg>
+  </button>
+  <p class="cap" id="cap">Вставь ключ</p>
+</div>
+<div class="card">
+  <div class="k">Ключ</div>
+  <input id="url" class="field" placeholder="vless  hy2  vmess  trojan  ss  или Paper" spellcheck="false" autocomplete="off"/>
+  <div class="sw">
+    <div><div class="t">РФ напрямую</div><div class="s">Яндекс, VK и .ru без VPN</div></div>
+    <button id="split" class="toggle on" type="button" aria-label="РФ напрямую"><i></i></button>
+  </div>
+</div>
+<p class="err" id="err" hidden></p>
+<script>
+let live=false;
+const $ = id => document.getElementById(id);
+try{ const u=localStorage.getItem("ply.url"); if(u) $("url").value=u; }catch(e){}
+$("split").onclick = () => $("split").classList.toggle("on");
+$("power").onclick = () => {
+  const url=$("url").value.trim();
+  if (live){
+    try{ PlyNative.disconnect(); }catch(e){}
+    live=false;
+    $("power").classList.remove("ok");
+    $("pill").className="pill"; $("pill").textContent="выкл";
+    $("cap").textContent="Вставь ключ";
+    return;
+  }
+  if (!url){ $("err").hidden=false; $("err").textContent="Вставь ключ vless, hy2, vmess, trojan, ss или ссылку Paper"; return; }
+  $("err").hidden=true;
+  try{ localStorage.setItem("ply.url", url); }catch(e){}
+  try{
+    PlyNative.connect(url, $("split").classList.contains("on"));
+    live=true;
+    $("power").classList.add("ok");
+    $("pill").className="pill ok"; $("pill").textContent="в сети";
+    $("cap").textContent="выключить";
+  }catch(e){ $("err").hidden=false; $("err").textContent=String(e); }
+};
+$("url").addEventListener("keydown", e => { if (e.key==="Enter") $("power").click(); });
+</script>
+</body>
+</html>

@@ -10,6 +10,26 @@ import (
 	"strings"
 )
 
+func CleanSource(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "\ufeff")
+	s = strings.Trim(s, "\"'`")
+	s = strings.TrimSpace(s)
+	if strings.ContainsAny(s, "\n\r") {
+		if line, err := FirstShareLine(s); err == nil && line != "" {
+			return line
+		}
+		for _, line := range strings.Split(s, "\n") {
+			line = strings.TrimSpace(strings.Trim(line, "\"'`"))
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			return line
+		}
+	}
+	return s
+}
+
 func isShare(s string) bool {
 	s = strings.ToLower(strings.TrimSpace(s))
 	return strings.HasPrefix(s, "vless://") ||
@@ -24,11 +44,11 @@ func rejectUnsupported(s string) error {
 	low := strings.ToLower(strings.TrimSpace(s))
 	switch {
 	case strings.HasPrefix(low, "hysteria://"):
-		return fmt.Errorf("Hysteria v1 Xray не умеет — нужен hy2://, vless, vmess, trojan или ss")
+		return fmt.Errorf("Hysteria v1 Xray не умеет — вставь hy2://, vless, vmess, trojan или ss")
 	case strings.HasPrefix(low, "tuic://"):
-		return fmt.Errorf("TUIC Xray не умеет — нужен hy2, vless, vmess, trojan или ss")
+		return fmt.Errorf("TUIC Xray не умеет — вставь hy2, vless, vmess, trojan или ss")
 	case strings.HasPrefix(low, "wireguard://"), strings.HasPrefix(low, "wg://"):
-		return fmt.Errorf("WireGuard-ключ пока не разбираю — нужен vless, vmess, trojan, ss или hy2")
+		return fmt.Errorf("WireGuard пока не разбираю — вставь vless, vmess, trojan, ss или hy2")
 	}
 	return nil
 }

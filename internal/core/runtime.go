@@ -41,11 +41,19 @@ func AppDir() (string, error) {
 }
 
 func DataDir() (string, error) {
-	dir, err := AppDir()
-	if err != nil {
-		return "", err
+	if runtime.GOOS == "windows" {
+		dir, err := AppDir()
+		if err != nil {
+			return "", err
+		}
+		d := filepath.Join(dir, "data")
+		return d, os.MkdirAll(d, 0755)
 	}
-	d := filepath.Join(dir, "data")
+	base, err := os.UserConfigDir()
+	if err != nil || base == "" {
+		base = os.TempDir()
+	}
+	d := filepath.Join(base, "Ply")
 	return d, os.MkdirAll(d, 0755)
 }
 
@@ -98,7 +106,7 @@ func FindXray() (string, error) {
 			return p, nil
 		}
 	}
-	return "", fmt.Errorf("не найден xray.exe рядом с Ply")
+	return "", fmt.Errorf("не найден xray рядом с Ply")
 }
 
 func FindWintun() error {
@@ -385,7 +393,7 @@ func Connect(source string) (*Session, error) {
 	if runtime.GOOS == "windows" {
 		note := "VPN включён. Весь IPv4 через Ply Tunnel."
 		if split {
-			note = "VPN включён. Россия напрямую, остальное через туннель."
+		note = "VPN включён. Сайты РФ без VPN, остальное через туннель."
 		}
 		TrayBalloon("Ply", note)
 	}

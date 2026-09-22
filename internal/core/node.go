@@ -123,7 +123,7 @@ func FetchSub(sub string) (string, error) {
 }
 
 func Resolve(source string) (*Node, error) {
-	source = strings.TrimSpace(source)
+	source = CleanSource(source)
 	if err := rejectUnsupported(source); err != nil {
 		return nil, err
 	}
@@ -141,11 +141,15 @@ func Resolve(source string) (*Node, error) {
 		}
 		return ParseLink(line)
 	default:
-		return nil, fmt.Errorf("нужна ссылка подписки или ключ vless/vmess/trojan/ss/hy2")
+		return nil, fmt.Errorf("нужна ссылка подписки или ключ vless, vmess, trojan, ss или hy2")
 	}
 }
 
 func RenderXray(n *Node, port int, split bool) ([]byte, error) {
+	return RenderXrayTun(n, port, split, -1)
+}
+
+func RenderXrayTun(n *Node, port int, split bool, tunFD int) ([]byte, error) {
 	rules := []any{}
 	if ip := net.ParseIP(n.Host); ip != nil {
 		rules = append(rules, map[string]any{"type": "field", "ip": []string{n.Host}, "outboundTag": "direct"})
@@ -193,15 +197,7 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 			map[string]any{
 				"tag":      "tun",
 				"protocol": "tun",
-				"settings": map[string]any{
-					"name":                   "ply0",
-					"desc":                   "Ply",
-					"mtu":                    1400,
-					"gateway":                []string{"198.18.0.1/16"},
-					"dns":                    []string{"1.1.1.1", "8.8.8.8"},
-					"autoSystemRoutingTable": []string{"0.0.0.0/1", "128.0.0.0/1"},
-					"autoOutboundsInterface": "auto",
-				},
+				"settings": tunSettings(tunFD),
 				"sniffing": map[string]any{
 					"enabled":      true,
 					"destOverride": []string{"http", "tls"},
@@ -236,6 +232,23 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 		},
 	}
 	return json.MarshalIndent(cfg, "", "  ")
+}
+
+func tunSettings(fd int) map[string]any {
+	s := map[string]any{
+		"name": "ply0",
+		"desc": "Ply",
+		"mtu":  1400,
+	}
+	if fd >= 0 {
+		s["fd"] = fd
+		return s
+	}
+	s["gateway"] = []string{"198.18.0.1/16"}
+	s["dns"] = []string{"1.1.1.1", "8.8.8.8"}
+	s["autoSystemRoutingTable"] = []string{"0.0.0.0/1", "128.0.0.0/1"}
+	s["autoOutboundsInterface"] = "auto"
+	return s
 }
 
 func (n *Node) outbound() map[string]any {

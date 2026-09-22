@@ -196,7 +196,7 @@ func (u *ui) doInstall() {
 		"2. Окно без прав. UAC — только у ядра, потом значок у часов.\r\n" +
 		"3. Вставь ключ (Paper / vless / hy2 / vmess / trojan / ss), нажми кнопку питания.\r\n" +
 		"4. Крестик закрывает окно. Ядро PlyCore остаётся в трее — туннель живой.\r\n" +
-		"5. «Россия мимо» — .ru и российские сервисы без VPN.\r\n" +
+		"5. «РФ напрямую» — Яндекс, VK и .ru без VPN.\r\n" +
 		"6. Новые версии Ply скачает сама.\r\n\r\n" +
 		"Happ и приложение Paper выключи.\r\n" +
 		"Папка: " + u.dest + "\r\n"
@@ -258,7 +258,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				line := "Окно отдельно, ядро PlyCore держит туннель. Go качать не надо."
+				line := "Окно отдельно, ядро держит туннель. Go качать не надо — всё уже внутри."
 				if u.oldVer != "" && u.oldVer != core.Version {
 					line = "Обновление " + u.oldVer + " → " + core.Version + ". Ссылка Paper останется."
 				}

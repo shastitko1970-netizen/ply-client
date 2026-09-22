@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -19,8 +20,9 @@ import (
 )
 
 type Snapshot struct {
-	Version string  `json:"version"`
-	Admin   bool    `json:"admin"`
+	Version  string  `json:"version"`
+	Platform string  `json:"platform"`
+	Admin    bool    `json:"admin"`
 	Live    bool    `json:"live"`
 	Busy    bool    `json:"busy"`
 	Status  string  `json:"status"`
@@ -107,6 +109,7 @@ func currentSnap() Snapshot {
 	defer daemonMu.Unlock()
 	s := daemonSnap
 	s.Version = Version
+	s.Platform = runtime.GOOS
 	s.Admin = IsAdmin()
 	s.URL = ReadURL()
 	s.Split = ReadSplit()
@@ -299,7 +302,7 @@ func daemonConnect(src string, auto bool) {
 	detail := fmt.Sprintf("%s  %s:%d", sess.Node.Label(), sess.Node.Host, sess.Node.Port)
 	status := sess.Node.Label()
 	if sess.Split {
-		status = "Россия мимо"
+		status = "РФ напрямую"
 	}
 	setSnap(func(s *Snapshot) {
 		s.Busy = false

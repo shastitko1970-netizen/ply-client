@@ -8,6 +8,11 @@ import (
 )
 
 func startCoreProcess(exe string) error {
+	if !IsAdmin() {
+		if err := StartElevated(exe, 0); err == nil {
+			return nil
+		}
+	}
 	cmd := exec.Command(exe)
 	cmd.Dir = filepath.Dir(exe)
 	return cmd.Start()

@@ -291,3 +291,40 @@ func TestReadSplitDefaultOn(t *testing.T) {
 		t.Fatal("missing file should mean Russia-direct on")
 	}
 }
+
+func TestCleanSource(t *testing.T) {
+	raw := "  \n\"vless://11111111-1111-4111-8111-111111111111@cdn.example.com:443?type=ws&security=tls&path=/vless&sni=cdn.example.com\"\n"
+	n, err := Resolve(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Host != "cdn.example.com" || n.Network != "ws" {
+		t.Fatalf("%+v", n)
+	}
+	quoted := "'hy2://letmein@example.com:443?sni=example.com'"
+	n2, err := Resolve(quoted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n2.Proto != "hysteria" || n2.Host != "example.com" {
+		t.Fatalf("%+v", n2)
+	}
+}
+
+func TestRenderXrayTunFD(t *testing.T) {
+	n, err := ParseLink(paper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := RenderXrayTun(n, 10808, true, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"fd": 7`) {
+		t.Fatal(s)
+	}
+	if strings.Contains(s, "autoSystemRoutingTable") {
+		t.Fatal("android fd should skip host routing")
+	}
+}

@@ -1,48 +1,38 @@
 # Ply
 
-Windows VPN. Вставила ключ — туннель встал. Не Happ. Не v2rayN.
+VPN. Вставила ключ — туннель встал. Не Happ. Не v2rayN.
 
-Два процесса: **окно** и **ядро**. Окно — тот же HTML, что сайт. Без фиолетовой шапки Windows. Крестик закрывает окно — **PlyCore** остаётся в трее и держит туннель.
+Два процесса: **окно** и **ядро**. Окно — тот же HTML, что сайт. Крестик закрывает окно — **PlyCore** остаётся и держит туннель.
 
-Понимает **Paper**, **vless://**, **hy2://** / **hysteria2://**, **vmess://**, **trojan://**, **ss://** и https-подписку. Mux выключен. Россия мимо, остальное через узел.
+Понимает **Paper**, **vless://**, **hy2://** / **hysteria2://**, **vmess://**, **trojan://**, **ss://** и https-подписку. Mux выключен. Сайты РФ можно пустить напрямую.
 
-TUIC Xray не умеет.
+TUIC Xray не умеет. Go качать не надо.
 
 ## Скачать
 
-Релиз **1.10.6**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.6](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.6)
+- Windows **1.10.7**: [Ply-1.10.7-win64.zip](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.7) — запусти **PlySetup.exe**
+- Linux **1.10.8** (тест): [Ply-1.10.8-linux-amd64.tar.gz](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.8) — `./install.sh`
+- macOS **1.10.9** (бета): [Ply-1.10.9-macos.zip](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.9)
+- Android **1.10.10** (бета): [Ply-1.10.10.apk](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.10)
 
-1. Скачай **Ply-1.10.6-win64.zip**, запусти **PlySetup.exe**
-2. Окно без прав. UAC — только у ядра, потом значок у часов
-3. С 1.3+ можно обновить из самого Ply
-4. Крестик = окно спит. Выход из VPN — только из трея
+## 1.10.7
+
+- Компактное окно: ключ и тумблеры в одном блоке, лишнее спрятано в «подробнее»
+- «РФ напрямую» вместо кривого «Россия мимо»
+- Установщик по-прежнему без Go
+
+## 1.10.8
+
+- Linux: окно + ядро + xray, `install.sh` ставит Chromium и setcap
+
+## 1.10.9
+
+- macOS: Ply.app, та же логика
+
+## 1.10.10
+
+- Android: VpnService, ключ, РФ напрямую
 
 ## 1.10.6
 
 - Туннель быстрее: MTU 1400, без лишнего DNS, Wi‑Fi больше не душат
-
-## 1.10.5
-
-- xray больше не падает с Access is denied после перезапуска / автозапуска
-
-## 1.10.4
-
-- Окно таскается за верхнюю полоску
-
-## 1.10.3
-
-- Нормальный размер окна с учётом масштаба Windows, блоки сразу
-
-## 1.10.2
-
-- Окно сразу HTML-блоками, без виндовой шапки и без системного скролла
-
-## 1.10.1
-
-- Кэш окна в AppData, не в Program Files
-- Ply.exe без админа, PlyCore по UAC
-
-## 1.10.0
-
-- Лаунчер как сайт: WebView2, те же шрифты и блоки
-- Крестик не гасит туннель

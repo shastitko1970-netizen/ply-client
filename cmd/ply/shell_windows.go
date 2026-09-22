@@ -42,9 +42,9 @@ func openWebShell() bool {
 		return nil
 	})
 	w.Init(dragJS)
-	w.SetSize(dip(980), dip(640), webview2.HintMin)
+	w.SetSize(dip(720), dip(480), webview2.HintMin)
 	dressWindow(hwnd)
-	setOuterSize(hwnd, dip(1080), dip(720))
+	setOuterSize(hwnd, dip(800), dip(540))
 	w.SetHtml(bootHTML)
 	go func() {
 		d, err := core.EnsureWorker()
@@ -68,8 +68,8 @@ func makeView(data string) webview2.WebView {
 		DataPath:  data,
 		WindowOptions: webview2.WindowOptions{
 			Title:  core.WindowTitle,
-			Width:  uint(dip(1080)),
-			Height: uint(dip(720)),
+			Width:  uint(dip(800)),
+			Height: uint(dip(540)),
 			Center: true,
 		},
 	})
