@@ -10,12 +10,16 @@ TUIC Xray не умеет.
 
 ## Скачать
 
-Релиз **1.10.5**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.5](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.5)
+Релиз **1.10.6**: [github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.6](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v1.10.6)
 
-1. Скачай **Ply-1.10.5-win64.zip**, запусти **PlySetup.exe**
+1. Скачай **Ply-1.10.6-win64.zip**, запусти **PlySetup.exe**
 2. Окно без прав. UAC — только у ядра, потом значок у часов
 3. С 1.3+ можно обновить из самого Ply
 4. Крестик = окно спит. Выход из VPN — только из трея
+
+## 1.10.6
+
+- Туннель быстрее: MTU 1400, без лишнего DNS, Wi‑Fi больше не душат
 
 ## 1.10.5
 

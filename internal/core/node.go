@@ -181,14 +181,14 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 		}
 	}
 
-	strategy := "AsIs"
-	if split {
-		strategy = "IPIfNonMatch"
-	}
-
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"dns": dns,
+		"policy": map[string]any{
+			"levels": map[string]any{
+				"0": map[string]any{"bufferSize": 1024, "connIdle": 300},
+			},
+		},
 		"inbounds": []any{
 			map[string]any{
 				"tag":      "tun",
@@ -196,7 +196,7 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 				"settings": map[string]any{
 					"name":                   "ply0",
 					"desc":                   "Ply",
-					"mtu":                    1500,
+					"mtu":                    1400,
 					"gateway":                []string{"198.18.0.1/16"},
 					"dns":                    []string{"1.1.1.1", "8.8.8.8"},
 					"autoSystemRoutingTable": []string{"0.0.0.0/1", "128.0.0.0/1"},
@@ -204,7 +204,8 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 				},
 				"sniffing": map[string]any{
 					"enabled":      true,
-					"destOverride": []string{"http", "tls", "quic"},
+					"destOverride": []string{"http", "tls"},
+					"routeOnly":    true,
 				},
 			},
 			map[string]any{
@@ -214,18 +215,23 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 				"protocol": "mixed",
 				"sniffing": map[string]any{
 					"enabled":      true,
-					"destOverride": []string{"http", "tls", "quic"},
+					"destOverride": []string{"http", "tls"},
+					"routeOnly":    true,
 				},
 				"settings": map[string]any{"auth": "noauth", "udp": true},
 			},
 		},
 		"outbounds": []any{
 			n.outbound(),
-			map[string]any{"tag": "direct", "protocol": "freedom"},
+			map[string]any{
+				"tag":      "direct",
+				"protocol": "freedom",
+				"settings": map[string]any{"domainStrategy": "UseIPv4"},
+			},
 			map[string]any{"tag": "block", "protocol": "blackhole"},
 		},
 		"routing": map[string]any{
-			"domainStrategy": strategy,
+			"domainStrategy": "AsIs",
 			"rules":          rules,
 		},
 	}
@@ -363,6 +369,13 @@ func (n *Node) streamSettings() map[string]any {
 		}
 	default:
 		ss["security"] = "none"
+	}
+
+	ss["sockopt"] = map[string]any{
+		"tcpNoDelay":       true,
+		"tcpKeepAliveIdle": 30,
+		"tcpMaxSeg":        1360,
+		"domainStrategy":   "UseIPv4",
 	}
 
 	switch netw {

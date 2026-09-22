@@ -148,14 +148,28 @@ Set-NetIPInterface -InterfaceIndex $idx -InterfaceMetric 1 -AddressFamily IPv4 -
 Set-NetIPInterface -InterfaceIndex $idx -Forwarding Enabled -AddressFamily IPv4 -ErrorAction SilentlyContinue
 Set-DnsClientServerAddress -InterfaceIndex $idx -ServerAddresses @('1.1.1.1','8.8.8.8') -ErrorAction SilentlyContinue
 
-Get-NetIPInterface | Where-Object { $_.InterfaceIndex -ne $idx -and $_.ConnectionState -eq 'Connected' } | ForEach-Object {
-  Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -AddressFamily $_.AddressFamily -InterfaceMetric 5000 -ErrorAction SilentlyContinue
-}
-
 $state = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
 $primary = $null
 if ($state.defaults) {
   $primary = @($state.defaults) | Select-Object -First 1
+}
+if ($state.metrics) {
+  foreach ($m in @($state.metrics)) {
+    if ([int]$m.IfIndex -ne $idx) {
+      Set-NetIPInterface -InterfaceIndex ([int]$m.IfIndex) -AddressFamily ([int]$m.Family) -InterfaceMetric ([int]$m.Metric) -ErrorAction SilentlyContinue
+    }
+  }
+}
+if ($state.dns) {
+  foreach ($d in @($state.dns)) {
+    if ([int]$d.IfIndex -eq $idx) { continue }
+    $servers = @($d.Servers)
+    if ($servers.Count -eq 0) {
+      Set-DnsClientServerAddress -InterfaceIndex ([int]$d.IfIndex) -ResetServerAddresses -ErrorAction SilentlyContinue
+    } else {
+      Set-DnsClientServerAddress -InterfaceIndex ([int]$d.IfIndex) -ServerAddresses $servers -ErrorAction SilentlyContinue
+    }
+  }
 }
 if ($serverIP -and $primary -and $primary.NextHop) {
   route delete $serverIP mask 255.255.255.255 | Out-Null
@@ -168,12 +182,6 @@ route delete 0.0.0.0 mask 128.0.0.0 | Out-Null
 route delete 128.0.0.0 mask 128.0.0.0 | Out-Null
 route add 0.0.0.0 mask 128.0.0.0 198.18.0.1 metric 1 if $idx | Out-Null
 route add 128.0.0.0 mask 128.0.0.0 198.18.0.1 metric 1 if $idx | Out-Null
-
-if ($state.dns) {
-  foreach ($d in @($state.dns)) {
-    Set-DnsClientServerAddress -InterfaceIndex ([int]$d.IfIndex) -ServerAddresses @('1.1.1.1','8.8.8.8') -ErrorAction SilentlyContinue
-  }
-}
 
 ipconfig /flushdns | Out-Null
 Write-Output 'OK'

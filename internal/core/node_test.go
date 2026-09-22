@@ -234,6 +234,18 @@ func TestRenderXrayHasTUN(t *testing.T) {
 	if !strings.Contains(s, `"enabled": false`) {
 		t.Fatal("mux should be off")
 	}
+	if !strings.Contains(s, `"mtu": 1400`) {
+		t.Fatal("tun mtu should be 1400")
+	}
+	if !strings.Contains(s, `"routeOnly": true`) {
+		t.Fatal("sniffing should be routeOnly")
+	}
+	if !strings.Contains(s, `"tcpMaxSeg": 1360`) {
+		t.Fatal("tcpMaxSeg missing")
+	}
+	if strings.Contains(s, "IPIfNonMatch") {
+		t.Fatal("IPIfNonMatch is slow, want AsIs")
+	}
 	if !strings.Contains(s, "2.27.175.32") {
 		t.Fatal("server ip should be direct")
 	}
@@ -260,13 +272,17 @@ func TestRenderXraySplitRussia(t *testing.T) {
 		"geosite:vk",
 		".ru$",
 		"xn--p1ai",
-		"IPIfNonMatch",
+		"AsIs",
 		"77.88.8.8",
 		"domain:vk.com",
+		"routeOnly",
 	} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("split config missing %s", need)
 		}
+	}
+	if strings.Contains(s, "IPIfNonMatch") {
+		t.Fatal("split should not use IPIfNonMatch")
 	}
 }
 
