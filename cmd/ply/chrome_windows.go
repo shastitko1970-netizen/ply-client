@@ -17,9 +17,12 @@ const (
 	swpNoSize       = 0x0001
 	swMinimize      = 6
 	wmClose         = 0x0010
+	wmSysCommand    = 0x0112
 	wmNCHitTest     = 0x0084
+	wmNCLbuttonDown = 0x00A1
 	htClient        = 1
 	htCaption       = 2
+	scMove          = 0xF010
 	wsPopup         = 0x80000000
 	wsVisible       = 0x10000000
 	wsThickFrame    = 0x00040000
@@ -47,6 +50,8 @@ var (
 	procCallWndProc   = user32.NewProc("CallWindowProcW")
 	procShowWindow    = user32.NewProc("ShowWindow")
 	procPostMessage   = user32.NewProc("PostMessageW")
+	procSendMessage   = user32.NewProc("SendMessageW")
+	procReleaseCap    = user32.NewProc("ReleaseCapture")
 	procGetDpi        = user32.NewProc("GetDpiForWindow")
 	procDwmSetAttr    = dwmapi.NewProc("DwmSetWindowAttribute")
 	origWndProc       uintptr
@@ -107,6 +112,14 @@ func winMin(hwnd uintptr) {
 
 func winClose(hwnd uintptr) {
 	_, _, _ = procPostMessage.Call(hwnd, wmClose, 0, 0)
+}
+
+func winDrag(hwnd uintptr) {
+	if hwnd == 0 {
+		return
+	}
+	_, _, _ = procReleaseCap.Call()
+	_, _, _ = procSendMessage.Call(hwnd, wmNCLbuttonDown, htCaption, 0)
 }
 
 func systemDPI() uint32 {

@@ -271,6 +271,11 @@ $("apply").onclick = async () => { $("apply").textContent = "Скачиваю у
 $("elevate").onclick = () => { location.reload(); };
 $("minw").onclick = () => { try{ plyWin("min"); }catch(e){} };
 $("closew").onclick = () => { try{ plyWin("close"); }catch(e){} };
+document.querySelector(".chrome").addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  if (e.target.closest(".btns")) return;
+  try { plyWin("drag"); } catch (err) {}
+});
 setInterval(pull, 400);
 pull();
 </script>

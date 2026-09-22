@@ -36,9 +36,12 @@ func openWebShell() bool {
 			winMin(hwnd)
 		case "close":
 			winClose(hwnd)
+		case "drag":
+			winDrag(hwnd)
 		}
 		return nil
 	})
+	w.Init(dragJS)
 	w.SetSize(dip(980), dip(640), webview2.HintMin)
 	dressWindow(hwnd)
 	setOuterSize(hwnd, dip(1080), dip(720))
@@ -73,7 +76,18 @@ func makeView(data string) webview2.WebView {
 }
 
 const bootHTML = `<!DOCTYPE html><html><body style="margin:0;background:#0a0a0b;color:#a1a1aa">
-<div style="height:36px;-webkit-app-region:drag;app-region:drag"></div>
+<div data-drag style="height:36px;-webkit-app-region:drag;app-region:drag"></div>
 <div style="padding:18px 24px;font:italic 500 34px Georgia,'Times New Roman',serif;color:#f4f4f5">Ply</div>
 <p id="boot" style="padding:0 24px;font:13px 'Segoe UI',sans-serif">поднимаю ядро…</p>
 </body></html>`
+
+const dragJS = `(function(){
+  document.addEventListener('mousedown', function(e){
+    if (e.button !== 0) return;
+    var t = e.target;
+    if (t && t.closest && t.closest('.btns,button,input,textarea,a,.toggle,.power,.field')) return;
+    if ((t && t.closest && t.closest('.chrome,[data-drag]')) || e.clientY <= 40) {
+      try { plyWin('drag'); } catch (err) {}
+    }
+  }, true);
+})();`

@@ -18,6 +18,7 @@ func TestHTMLLooksLikeSite(t *testing.T) {
 		"/v1/state",
 		"class=\"chrome\"",
 		"plyWin",
+		`plyWin("drag")`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("html missing %q", want)
