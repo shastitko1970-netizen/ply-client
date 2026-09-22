@@ -7,5 +7,6 @@ func CreateShortcut(link, target, workdir, desc string) error {
 	return nil
 }
 
-func DesktopDir() string  { return "" }
-func StartMenuDir() string { return "" }
+func DesktopDir() string         { return "" }
+func StartMenuDir() string       { return "" }
+func CommonStartMenuDir() string { return "" }

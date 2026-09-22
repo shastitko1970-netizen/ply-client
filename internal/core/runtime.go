@@ -2,7 +2,9 @@ package core
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +15,11 @@ import (
 )
 
 const LocalPort = 10808
+
+type Session struct {
+	Node   *Node
+	ExitIP string
+}
 
 func AppDir() (string, error) {
 	exe, err := os.Executable()
@@ -64,6 +71,11 @@ func pidFile() string {
 	return filepath.Join(dir, "xray.pid")
 }
 
+func xrayLogPath() string {
+	dir, _ := DataDir()
+	return filepath.Join(dir, "xray.log")
+}
+
 func FindXray() (string, error) {
 	if p := os.Getenv("PLY_XRAY"); p != "" {
 		if _, err := os.Stat(p); err == nil {
@@ -86,15 +98,39 @@ func FindXray() (string, error) {
 	return "", fmt.Errorf("не найден xray.exe рядом с Ply")
 }
 
+func FindWintun() error {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	dir, err := AppDir()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(dir, "wintun.dll")); err != nil {
+		return fmt.Errorf("нет wintun.dll рядом с Ply — туннель без него не встанет")
+	}
+	return nil
+}
+
 func StartXray(bin, cfg string) error {
+	logPath := xrayLogPath()
+	lf, err := os.Create(logPath)
+	if err != nil {
+		return err
+	}
 	cmd := exec.Command(bin, "run", "-c", cfg)
 	cmd.Dir = filepath.Dir(bin)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stdout = lf
+	cmd.Stderr = lf
 	tuneCmd(cmd)
 	if err := cmd.Start(); err != nil {
+		_ = lf.Close()
 		return fmt.Errorf("запуск xray: %w", err)
 	}
+	go func() {
+		_ = cmd.Wait()
+		_ = lf.Close()
+	}()
 	return os.WriteFile(pidFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 }
 
@@ -110,6 +146,11 @@ func StopXray() {
 		}
 	}
 	_ = os.Remove(pidFile())
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("taskkill", "/F", "/IM", "xray.exe", "/T")
+		tuneCmd(cmd)
+		_ = cmd.Run()
+	}
 }
 
 func PortOpen(port int) bool {
@@ -132,7 +173,65 @@ func WaitPort(port int, d time.Duration) error {
 	return fmt.Errorf("ядро не открыло порт")
 }
 
-func Connect(source string) (*Node, error) {
+func tailLog(n int) string {
+	b, err := os.ReadFile(xrayLogPath())
+	if err != nil || len(b) == 0 {
+		return ""
+	}
+	s := strings.TrimSpace(string(b))
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func tunFailed(log string) string {
+	low := strings.ToLower(log)
+	switch {
+	case strings.Contains(low, "access is denied"), strings.Contains(low, "elevation"):
+		return "нет прав администратора для туннеля"
+	case strings.Contains(low, "wintun"):
+		return "wintun: " + lastLine(log)
+	case strings.Contains(low, "tun") && (strings.Contains(low, "fail") || strings.Contains(low, "error")):
+		return lastLine(log)
+	}
+	return ""
+}
+
+func lastLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(s, "\n"); i >= 0 {
+		return strings.TrimSpace(s[i+1:])
+	}
+	return s
+}
+
+func ProbeExitIP() string {
+	cli := &http.Client{Timeout: 8 * time.Second}
+	res, err := cli.Get("https://api.ipify.org")
+	if err != nil {
+		return ""
+	}
+	defer res.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(res.Body, 64))
+	if err != nil {
+		return ""
+	}
+	ip := strings.TrimSpace(string(b))
+	if net.ParseIP(ip) == nil {
+		return ""
+	}
+	return ip
+}
+
+func Connect(source string) (*Session, error) {
+	if runtime.GOOS == "windows" && !IsAdmin() {
+		return nil, fmt.Errorf("для туннеля нужны права администратора")
+	}
+	if err := FindWintun(); err != nil {
+		return nil, err
+	}
 	n, err := Resolve(source)
 	if err != nil {
 		return nil, err
@@ -154,20 +253,29 @@ func Connect(source string) (*Node, error) {
 		return nil, err
 	}
 	StopXray()
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	if err := StartXray(xray, cfgPath); err != nil {
 		return nil, err
 	}
-	if err := WaitPort(LocalPort, 5*time.Second); err != nil {
-		return nil, err
+	if err := WaitPort(LocalPort, 6*time.Second); err != nil {
+		msg := tunFailed(tailLog(12))
+		StopXray()
+		if msg != "" {
+			return nil, fmt.Errorf("туннель: %s", msg)
+		}
+		return nil, fmt.Errorf("%w\n%s", err, tailLog(8))
+	}
+	time.Sleep(400 * time.Millisecond)
+	if msg := tunFailed(tailLog(20)); msg != "" {
+		StopXray()
+		return nil, fmt.Errorf("туннель: %s", msg)
 	}
 	if runtime.GOOS == "windows" {
-		if err := SetWinProxy(fmt.Sprintf("127.0.0.1:%d", LocalPort), true); err != nil {
-			return nil, fmt.Errorf("прокси Windows: %w", err)
-		}
+		_ = SetWinProxy(fmt.Sprintf("127.0.0.1:%d", LocalPort), true)
 	}
 	_ = SaveURL(source)
-	return n, nil
+	ip := ProbeExitIP()
+	return &Session{Node: n, ExitIP: ip}, nil
 }
 
 func Disconnect() error {

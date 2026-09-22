@@ -32,8 +32,8 @@ jobs:
           go install github.com/akavel/rsrc@latest
           $env:PATH = "$(go env GOPATH)\bin;" + $env:PATH
           if (Test-Path assets/icon.ico) {
-            rsrc -ico assets/icon.ico -arch amd64 -o cmd/ply/rsrc_windows.syso
-            rsrc -ico assets/icon.ico -arch amd64 -o cmd/setup/rsrc_windows.syso
+            rsrc -manifest assets/app.manifest -ico assets/icon.ico -arch amd64 -o cmd/ply/rsrc_windows.syso
+            rsrc -manifest assets/app.manifest -ico assets/icon.ico -arch amd64 -o cmd/setup/rsrc_windows.syso
           }
 
       - name: Build Ply
@@ -45,11 +45,12 @@ jobs:
 
       - name: Fetch Xray
         run: |
-          Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-windows-64.zip" -OutFile xray.zip
+          Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/download/v26.9.9/Xray-windows-64.zip" -OutFile xray.zip
           Expand-Archive -Path xray.zip -DestinationPath xrayout -Force
           Copy-Item dist/Ply.exe payload/Ply.exe
           Copy-Item xrayout/xray.exe payload/xray.exe
           Copy-Item xrayout/geoip.dat payload/geoip.dat
+          Copy-Item xrayout/wintun.dll payload/wintun.dll
 
       - name: Payload zip
         run: |
@@ -61,7 +62,7 @@ jobs:
         run: |
           go build -trimpath -ldflags="-s -w -H windowsgui" -o dist/PlySetup.exe ./cmd/setup
           Copy-Item README.txt dist/README.txt
-          Compress-Archive -Path dist/PlySetup.exe, dist/README.txt -DestinationPath dist/Ply-1.0.0-win64.zip -Force
+          Compress-Archive -Path dist/PlySetup.exe, dist/README.txt -DestinationPath dist/Ply-1.1.0-win64.zip -Force
           Compress-Archive -Path payload\* -DestinationPath dist/Ply-portable-win64.zip -Force
 
       - uses: actions/upload-artifact@v4
@@ -69,24 +70,25 @@ jobs:
           name: ply-windows
           path: |
             dist/PlySetup.exe
-            dist/Ply-1.0.0-win64.zip
+            dist/Ply-1.1.0-win64.zip
             dist/Ply-portable-win64.zip
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: Ply 1.0.0
+          tag_name: v1.1.0
+          name: Ply 1.1.0
           body: |
-            Установщик: **PlySetup.exe** (внутри zip).
+            VPN-туннель. Обновляет 1.0 на месте.
 
-            1. Распакуй zip, запусти PlySetup.exe
-            2. Если SmartScreen — Подробнее → Выполнить в любом случае
-            3. Вставь ссылку Paper, Happ выключи
+            1. Запусти PlySetup.exe (права администратора)
+            2. Ply появится в меню Пуск
+            3. Открой → вставь ссылку Paper → Включить VPN
+            4. Happ выключи
 
-            Портативный вариант без установщика: Ply-portable-win64.zip
+            Когда живо: статус «VPN включён» и адаптер Ply Tunnel.
           files: |
-            dist/Ply-1.0.0-win64.zip
+            dist/Ply-1.1.0-win64.zip
             dist/PlySetup.exe
             dist/Ply-portable-win64.zip
           fail_on_unmatched_files: true

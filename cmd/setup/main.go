@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	_ "embed"
 
@@ -41,6 +42,7 @@ var (
 	colAccent = color.NRGBA{R: 200, G: 204, B: 212, A: 255}
 	colInk    = color.NRGBA{R: 10, G: 10, B: 11, A: 255}
 	colErr    = color.NRGBA{R: 193, G: 123, B: 123, A: 255}
+	colOk     = color.NRGBA{R: 138, G: 163, B: 138, A: 255}
 )
 
 type step int
@@ -56,6 +58,7 @@ type ui struct {
 	th       *material.Theme
 	install  widget.Clickable
 	launch   widget.Clickable
+	elevate  widget.Clickable
 	desk     widget.Bool
 	auto     widget.Bool
 	menu     widget.Bool
@@ -64,6 +67,8 @@ type ui struct {
 	status   string
 	err      string
 	dest     string
+	oldVer   string
+	admin    bool
 }
 
 func main() {
@@ -71,8 +76,8 @@ func main() {
 		w := new(app.Window)
 		w.Option(
 			app.Title("Ply — установка"),
-			app.Size(unit.Dp(460), unit.Dp(620)),
-			app.MinSize(unit.Dp(400), unit.Dp(540)),
+			app.Size(unit.Dp(480), unit.Dp(680)),
+			app.MinSize(unit.Dp(420), unit.Dp(560)),
 		)
 		if err := run(w); err != nil {
 			log.Fatal(err)
@@ -90,15 +95,24 @@ func run(w *app.Window) error {
 	th.Palette.ContrastBg = colAccent
 	th.Palette.ContrastFg = colInk
 
+	old := core.InstalledVersion()
 	u := &ui{
 		w:      w,
 		th:     th,
 		dest:   core.DefaultInstallDir(),
-		status: "Готов поставить Ply",
+		oldVer: old,
+		admin:  core.IsAdmin(),
+		status: "Готов поставить Ply " + core.Version,
+	}
+	if old != "" {
+		u.status = "Обновлю " + old + " → " + core.Version
 	}
 	u.desk.Value = true
 	u.auto.Value = true
 	u.menu.Value = true
+	if !u.admin {
+		u.err = "Нужны права администратора: туннель, меню Пуск и автозапуск."
+	}
 
 	var ops op.Ops
 	for {
@@ -119,9 +133,16 @@ func (u *ui) update(gtx layout.Context) {
 	_ = u.desk.Update(gtx)
 	_ = u.auto.Update(gtx)
 	_ = u.menu.Update(gtx)
-	if u.install.Clicked(gtx) && u.stage == stepWelcome {
+	if u.elevate.Clicked(gtx) && !u.admin {
+		if err := core.RelaunchElevated(); err != nil {
+			u.err = err.Error()
+			return
+		}
+		os.Exit(0)
+	}
+	if u.install.Clicked(gtx) && u.stage == stepWelcome && u.admin {
 		u.stage = stepWork
-		u.status = "Распаковка"
+		u.status = "Останавливаю старую версию"
 		u.err = ""
 		go u.doInstall()
 	}
@@ -136,9 +157,12 @@ func (u *ui) update(gtx layout.Context) {
 
 func (u *ui) doInstall() {
 	if len(payload) < 64 {
-		u.fail("в установщике нет пакета — собери через GitHub Actions")
+		u.fail("в установщике нет пакета")
 		return
 	}
+	core.StopPlyProcesses()
+	time.Sleep(400 * time.Millisecond)
+
 	zr, err := zip.NewReader(bytes.NewReader(payload), int64(len(payload)))
 	if err != nil {
 		u.fail("архив: " + err.Error())
@@ -148,7 +172,7 @@ func (u *ui) doInstall() {
 	u.w.Invalidate()
 	err = core.ExtractZip(zr, u.dest, func(done, total uint64) {
 		if total > 0 {
-			u.progress = float32(done) / float32(total)
+			u.progress = float32(done) / float32(total) * 0.8
 			u.w.Invalidate()
 		}
 	})
@@ -158,6 +182,7 @@ func (u *ui) doInstall() {
 	}
 	ply := filepath.Join(u.dest, "Ply.exe")
 	xray := filepath.Join(u.dest, "xray.exe")
+	wintun := filepath.Join(u.dest, "wintun.dll")
 	if _, err := os.Stat(ply); err != nil {
 		u.fail("в пакете нет Ply.exe")
 		return
@@ -166,14 +191,31 @@ func (u *ui) doInstall() {
 		u.fail("в пакете нет xray.exe")
 		return
 	}
+	if _, err := os.Stat(wintun); err != nil {
+		u.fail("в пакете нет wintun.dll — без него туннель не встанет")
+		return
+	}
 
+	_ = core.WriteVersionFile(u.dest)
 	readme := "Ply " + core.Version + "\r\n\r\n" +
-		"Вставь ссылку из кабинета Paper.\r\n" +
-		"Ключ с двумя # чистится сам. Mux выключен.\r\n" +
-		"Системный прокси 127.0.0.1:10808.\r\n\r\n" +
-		"Happ и приложение Paper выключи — один слой.\r\n\r\n" +
+		"КАК ЗАПУСТИТЬ\r\n" +
+		"1. Открой Ply из меню Пуск (Все приложения) или с рабочего стола.\r\n" +
+		"2. Windows спросит права администратора — согласись. Без них VPN-туннеля нет.\r\n" +
+		"3. Вставь ссылку из кабинета Paper.\r\n" +
+		"4. Нажми «Включить VPN». Статус станет «VPN включён», появится Ply Tunnel.\r\n\r\n" +
+		"Happ и приложение Paper выключи — один слой.\r\n" +
 		"Папка: " + u.dest + "\r\n"
 	_ = os.WriteFile(filepath.Join(u.dest, "README.txt"), []byte(readme), 0644)
+	_ = core.WriteUninstall(u.dest)
+
+	u.status = "Регистрация в Windows"
+	u.progress = 0.85
+	u.w.Invalidate()
+	if err := core.RegisterApp(u.dest); err != nil {
+		u.fail(err.Error())
+		return
+	}
+	core.RemoveLegacyStartFolder()
 
 	u.status = "Ярлыки"
 	u.progress = 0.92
@@ -181,17 +223,19 @@ func (u *ui) doInstall() {
 
 	if u.desk.Value {
 		link := filepath.Join(core.DesktopDir(), "Ply.lnk")
-		if err := core.CreateShortcut(link, ply, u.dest, "Ply — клиент Paper"); err != nil {
+		if err := core.CreateShortcut(link, ply, u.dest, "Ply — VPN Paper"); err != nil {
 			u.fail(err.Error())
 			return
 		}
 	}
 	if u.menu.Value {
 		link := filepath.Join(core.StartMenuDir(), "Ply.lnk")
-		if err := core.CreateShortcut(link, ply, u.dest, "Ply — клиент Paper"); err != nil {
+		if err := core.CreateShortcut(link, ply, u.dest, "Ply — VPN Paper"); err != nil {
 			u.fail(err.Error())
 			return
 		}
+		common := filepath.Join(core.CommonStartMenuDir(), "Ply.lnk")
+		_ = core.CreateShortcut(common, ply, u.dest, "Ply — VPN Paper")
 	}
 	if u.auto.Value {
 		if err := core.SetAutoStart(true, ply); err != nil {
@@ -199,6 +243,7 @@ func (u *ui) doInstall() {
 			return
 		}
 	}
+	core.NotifyShell()
 
 	u.progress = 1
 	u.stage = stepDone
@@ -225,11 +270,15 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(6)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				b := material.Body2(u.th, "Установщик Windows. Ядро Xray внутри, без v2rayN.")
+				line := "Установщик Windows  ·  VPN-туннель  ·  Xray внутри"
+				if u.oldVer != "" && u.oldVer != core.Version {
+					line = "Обновление " + u.oldVer + " → " + core.Version + ". Ссылка Paper останется."
+				}
+				b := material.Body2(u.th, line)
 				b.Color = colMuted
 				return b.Layout(gtx)
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(28)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return roundPanel(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
@@ -247,7 +296,17 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 					)
 				})
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(18)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if u.stage != stepWelcome {
+					return layout.Dimensions{}
+				}
+				how := "После установки Ply появится в меню Пуск (Все приложения) и на рабочем столе.\nОткрой → вставь ссылку → «Включить VPN»."
+				t := material.Body2(u.th, how)
+				t.Color = colMuted
+				return t.Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if u.stage != stepWelcome {
 					return layout.Dimensions{}
@@ -260,7 +319,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 						return cb.Layout(gtx)
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						cb := material.CheckBox(u.th, &u.menu, "Меню Пуск")
+						cb := material.CheckBox(u.th, &u.menu, "Меню Пуск — плитка Ply")
 						cb.Color = colMuted
 						cb.IconColor = colAccent
 						return cb.Layout(gtx)
@@ -273,7 +332,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 					}),
 				)
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if u.stage != stepWork {
 					return layout.Dimensions{}
@@ -291,6 +350,14 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if u.stage != stepDone {
+					return layout.Dimensions{}
+				}
+				t := material.Body2(u.th, "Ply стоит как приложение Windows.\nИщи «Ply» в меню Пуск. Запусти и включи VPN.")
+				t.Color = colOk
+				return t.Layout(gtx)
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if u.err == "" {
 					return layout.Dimensions{}
 				}
@@ -300,21 +367,27 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Flexed(1, layout.Spacer{}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				switch u.stage {
-				case stepWork:
+				switch {
+				case !u.admin && u.stage == stepWelcome:
+					return primaryBtn(gtx, u.th, &u.elevate, "Запросить права")
+				case u.stage == stepWork:
 					t := material.Body2(u.th, "Не закрывай окно")
 					t.Color = colSubtle
 					t.Alignment = text.Middle
 					return t.Layout(gtx)
-				case stepDone:
+				case u.stage == stepDone:
 					return primaryBtn(gtx, u.th, &u.launch, "Запустить Ply")
 				default:
-					return primaryBtn(gtx, u.th, &u.install, "Установить")
+					label := "Установить"
+					if u.oldVer != "" {
+						label = "Обновить до " + core.Version
+					}
+					return primaryBtn(gtx, u.th, &u.install, label)
 				}
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				t := material.Caption(u.th, fmt.Sprintf("Ply  ·  v%s  ·  Paper  ·  Xray", core.Version))
+				t := material.Caption(u.th, fmt.Sprintf("Ply  ·  v%s  ·  Paper  ·  Xray TUN", core.Version))
 				t.Color = colSubtle
 				t.Alignment = text.Middle
 				return t.Layout(gtx)

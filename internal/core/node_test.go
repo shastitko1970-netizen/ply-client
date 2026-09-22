@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestStripSubHash(t *testing.T) {
 	u := "https://apimef.example.net/key#PaperVPN"
@@ -37,5 +40,29 @@ func TestFirstVLESS(t *testing.T) {
 	}
 	if got[:8] != "vless://" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestRenderXrayHasTUN(t *testing.T) {
+	raw := "vless://0de5863f-fb38-473b-95b6-1a355c5345fd@2.27.175.32:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=firefox&sni=www.elastic.co&sid=&pbk=3rdiCNo7h8FvYrC7WdPYcTt7M2g8PhlRy9eCI2hLDB0"
+	n, err := ParseVLESS(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := RenderXray(n, 10808)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, need := range []string{`"protocol": "tun"`, `"desc": "Ply"`, `"autoSystemRoutingTable"`, `"mux"`} {
+		if !strings.Contains(s, need) {
+			t.Fatalf("config missing %s", need)
+		}
+	}
+	if !strings.Contains(s, `"enabled": false`) {
+		t.Fatal("mux should be off")
+	}
+	if !strings.Contains(s, "2.27.175.32") {
+		t.Fatal("server ip should be direct")
 	}
 }

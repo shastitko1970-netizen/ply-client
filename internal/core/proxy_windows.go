@@ -55,13 +55,13 @@ func SetAutoStart(enable bool, exe string) error {
 		`Software\Microsoft\Windows\CurrentVersion\Run`,
 		registry.SET_VALUE,
 	)
-	if err != nil {
-		return err
+	if err == nil {
+		if enable {
+			_ = k.DeleteValue("Ply") // old 1.0 key — elevated task replaces it
+		} else {
+			_ = k.DeleteValue("Ply")
+		}
+		k.Close()
 	}
-	defer k.Close()
-	if enable {
-		return k.SetStringValue("Ply", `"`+exe+`"`)
-	}
-	_ = k.DeleteValue("Ply")
-	return nil
+	return SetLogonTask(enable, exe)
 }

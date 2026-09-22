@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -11,7 +12,7 @@ import (
 	"time"
 )
 
-const UA = "Ply/1.0"
+const UA = "Ply/1.1"
 
 type Node struct {
 	UUID, Host, Flow, Security, Network, SNI, FP, PBK, SID, Spx, Enc string
@@ -134,9 +135,41 @@ func Resolve(source string) (*Node, error) {
 }
 
 func RenderXray(n *Node, port int) ([]byte, error) {
+	rules := []any{
+		map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},
+		map[string]any{"type": "field", "network": "udp", "port": "443", "outboundTag": "block"},
+	}
+	if ip := net.ParseIP(n.Host); ip != nil {
+		rules = append([]any{
+			map[string]any{"type": "field", "ip": []string{n.Host}, "outboundTag": "direct"},
+		}, rules...)
+	}
+	rules = append(rules, map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"})
+
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
+		"dns": map[string]any{
+			"servers":       []string{"1.1.1.1", "8.8.8.8"},
+			"queryStrategy": "UseIPv4",
+		},
 		"inbounds": []any{
+			map[string]any{
+				"tag":      "tun",
+				"protocol": "tun",
+				"settings": map[string]any{
+					"name":                   "ply0",
+					"desc":                   "Ply",
+					"mtu":                    1500,
+					"gateway":                []string{"198.18.0.1/16"},
+					"dns":                    []string{"1.1.1.1", "8.8.8.8"},
+					"autoSystemRoutingTable": []string{"0.0.0.0/0"},
+					"autoOutboundsInterface": "auto",
+				},
+				"sniffing": map[string]any{
+					"enabled":      true,
+					"destOverride": []string{"http", "tls"},
+				},
+			},
 			map[string]any{
 				"tag":      "socks",
 				"port":     port,
@@ -181,11 +214,7 @@ func RenderXray(n *Node, port int) ([]byte, error) {
 		},
 		"routing": map[string]any{
 			"domainStrategy": "AsIs",
-			"rules": []any{
-				map[string]any{"type": "field", "network": "udp", "port": "443", "outboundTag": "block"},
-				map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},
-				map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"},
-			},
+			"rules":          rules,
 		},
 	}
 	return json.MarshalIndent(cfg, "", "  ")

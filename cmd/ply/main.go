@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 
 	"gioui.org/app"
@@ -42,12 +43,15 @@ type ui struct {
 	url        widget.Editor
 	connect    widget.Clickable
 	disconnect widget.Clickable
+	elevate    widget.Clickable
 	auto       widget.Bool
 	busy       bool
+	admin      bool
 	status     string
 	detail     string
 	err        string
 	live       bool
+	exitIP     string
 	node       *core.Node
 }
 
@@ -55,9 +59,9 @@ func main() {
 	go func() {
 		w := new(app.Window)
 		w.Option(
-			app.Title("Ply"),
-			app.Size(unit.Dp(440), unit.Dp(660)),
-			app.MinSize(unit.Dp(380), unit.Dp(540)),
+			app.Title("Ply — VPN"),
+			app.Size(unit.Dp(460), unit.Dp(700)),
+			app.MinSize(unit.Dp(400), unit.Dp(560)),
 		)
 		if err := run(w); err != nil {
 			log.Fatal(err)
@@ -75,15 +79,22 @@ func run(w *app.Window) error {
 	th.Palette.ContrastBg = colAccent
 	th.Palette.ContrastFg = colInk
 
-	u := &ui{w: w, th: th, status: "ожидание"}
+	u := &ui{w: w, th: th, admin: core.IsAdmin(), status: "VPN выключен"}
 	u.url.SingleLine = true
 	u.url.Submit = true
 	u.auto.Value = true
 	if saved := core.ReadURL(); saved != "" {
 		u.url.SetText(saved)
-		u.busy = true
-		u.status = "разбор ключа"
-		go u.doConnect(saved, true)
+	}
+	if u.admin {
+		if saved := strings.TrimSpace(u.url.Text()); saved != "" {
+			u.busy = true
+			u.status = "включаю туннель"
+			go u.doConnect(saved, true)
+		}
+	} else {
+		u.status = "нужны права"
+		u.err = "Туннель без прав администратора не встанет. Нажми «Запросить права» — Windows покажет UAC."
 	}
 
 	var ops op.Ops
@@ -108,12 +119,12 @@ func (u *ui) update(gtx layout.Context) {
 		if !ok {
 			break
 		}
-		if _, ok := ev.(widget.SubmitEvent); ok && !u.busy {
+		if _, ok := ev.(widget.SubmitEvent); ok && !u.busy && u.admin {
 			src := strings.TrimSpace(u.url.Text())
 			auto := u.auto.Value
 			u.busy = true
 			u.err = ""
-			u.status = "разбор ключа"
+			u.status = "включаю туннель"
 			go u.doConnect(src, auto)
 		}
 	}
@@ -121,12 +132,20 @@ func (u *ui) update(gtx layout.Context) {
 		exe, _ := os.Executable()
 		_ = core.SetAutoStart(u.auto.Value, exe)
 	}
-	if u.connect.Clicked(gtx) && !u.busy {
+	if u.elevate.Clicked(gtx) && !u.admin {
+		if err := core.RelaunchElevated(); err != nil {
+			u.err = err.Error()
+			u.w.Invalidate()
+			return
+		}
+		os.Exit(0)
+	}
+	if u.connect.Clicked(gtx) && !u.busy && u.admin {
 		src := strings.TrimSpace(u.url.Text())
 		auto := u.auto.Value
 		u.busy = true
 		u.err = ""
-		u.status = "разбор ключа"
+		u.status = "включаю туннель"
 		go u.doConnect(src, auto)
 	}
 	if u.disconnect.Clicked(gtx) && !u.busy {
@@ -136,20 +155,22 @@ func (u *ui) update(gtx layout.Context) {
 }
 
 func (u *ui) doConnect(src string, auto bool) {
-	n, err := core.Connect(src)
+	s, err := core.Connect(src)
 	if err != nil {
 		u.live = false
 		u.err = err.Error()
 		u.status = "ошибка"
 		u.detail = ""
+		u.exitIP = ""
 		u.busy = false
 		u.w.Invalidate()
 		return
 	}
-	u.node = n
+	u.node = s.Node
+	u.exitIP = s.ExitIP
 	u.live = true
-	u.status = "ключ живой"
-	u.detail = fmt.Sprintf("%s:%d   %s", n.Host, n.Port, n.SNI)
+	u.status = "VPN включён"
+	u.detail = fmt.Sprintf("%s:%d   %s", s.Node.Host, s.Node.Port, s.Node.SNI)
 	u.err = ""
 	u.busy = false
 	if auto {
@@ -162,8 +183,9 @@ func (u *ui) doConnect(src string, auto bool) {
 func (u *ui) doDisconnect() {
 	_ = core.Disconnect()
 	u.live = false
-	u.status = "ожидание"
+	u.status = "VPN выключен"
 	u.detail = ""
+	u.exitIP = ""
 	u.err = ""
 	u.busy = false
 	u.w.Invalidate()
@@ -195,13 +217,13 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 					}),
 				)
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				b := material.Body2(u.th, "Вставь ссылку Paper. Ключ чистится сам, Mux выключен.")
+				b := material.Body2(u.th, "1. Вставь ссылку Paper\n2. Нажми «Включить VPN»\n3. Разреши права администратора — без них туннеля нет")
 				b.Color = colMuted
 				return b.Layout(gtx)
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(26)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return roundPanel(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
@@ -222,9 +244,18 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				label := "Подхватить ключ"
+				if u.admin {
+					return layout.Dimensions{}
+				}
+				return primaryBtn(gtx, u.th, &u.elevate, "Запросить права")
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if !u.admin {
+					return layout.Dimensions{}
+				}
+				label := "Включить VPN"
 				if u.busy {
-					label = "Секунду…"
+					label = "Поднимаю туннель…"
 				} else if u.live {
 					label = "Обновить ключ"
 				}
@@ -232,34 +263,46 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return ghostBtn(gtx, u.th, &u.disconnect, "Сброс")
+				return ghostBtn(gtx, u.th, &u.disconnect, "Выключить VPN")
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(18)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				cb := material.CheckBox(u.th, &u.auto, "Автозапуск с Windows")
 				cb.Color = colMuted
 				cb.IconColor = colAccent
 				return cb.Layout(gtx)
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(18)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if u.err != "" {
 					t := material.Body2(u.th, u.err)
 					t.Color = colErr
 					return t.Layout(gtx)
 				}
-				if u.detail != "" {
-					t := material.Body2(u.th, u.detail)
-					t.Color = colMuted
+				if u.live {
+					ip := u.exitIP
+					if ip == "" {
+						ip = "проверяю…"
+					}
+					msg := "Туннель Ply Tunnel включён.\nВыход  " + ip
+					if u.detail != "" {
+						msg += "\nУзел   " + u.detail
+					}
+					t := material.Body2(u.th, msg)
+					t.Color = colOk
 					return t.Layout(gtx)
 				}
-				t := material.Body2(u.th, "Системный прокси. Happ и приложение Paper выключи.")
+				t := material.Body2(u.th, "Пока выключено: трафик идёт мимо Paper.\nHapp и приложение Paper выключи — один слой.")
 				t.Color = colSubtle
 				return t.Layout(gtx)
 			}),
 			layout.Flexed(1, layout.Spacer{}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				t := material.Caption(u.th, "Ply  ·  v"+core.Version+"  ·  Paper  ·  Xray")
+				hint := "Ply  ·  v" + core.Version + "  ·  в меню Пуск как Ply"
+				if runtime.GOOS != "windows" {
+					hint = "Ply  ·  v" + core.Version
+				}
+				t := material.Caption(u.th, hint)
 				t.Color = colSubtle
 				t.Alignment = text.Middle
 				return t.Layout(gtx)
