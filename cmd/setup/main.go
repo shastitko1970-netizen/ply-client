@@ -183,6 +183,7 @@ func (u *ui) doInstall() {
 	ply := filepath.Join(u.dest, "Ply.exe")
 	xray := filepath.Join(u.dest, "xray.exe")
 	wintun := filepath.Join(u.dest, "wintun.dll")
+	geosite := filepath.Join(u.dest, "geosite.dat")
 	if _, err := os.Stat(ply); err != nil {
 		u.fail("в пакете нет Ply.exe")
 		return
@@ -195,6 +196,10 @@ func (u *ui) doInstall() {
 		u.fail("в пакете нет wintun.dll — без него туннель не встанет")
 		return
 	}
+	if _, err := os.Stat(geosite); err != nil {
+		u.fail("в пакете нет geosite.dat — без него Россия не уйдёт в обход")
+		return
+	}
 
 	_ = core.WriteVersionFile(u.dest)
 	readme := "Ply " + core.Version + "\r\n\r\n" +
@@ -203,7 +208,8 @@ func (u *ui) doInstall() {
 		"2. Согласись на права администратора.\r\n" +
 		"3. Вставь ссылку Paper, нажми «Включить VPN».\r\n" +
 		"4. Крестик сворачивает в трей — туннель живой. Выход только из значка у часов.\r\n" +
-		"5. Новые версии — кнопка «Проверить обновления» в Ply.\r\n\r\n" +
+		"5. «Россия напрямую» — .ru и российские сервисы мимо VPN.\r\n" +
+		"6. Новые версии — кнопка «Проверить обновления» в Ply.\r\n\r\n" +
 		"Happ и приложение Paper выключи.\r\n" +
 		"Папка: " + u.dest + "\r\n"
 	_ = os.WriteFile(filepath.Join(u.dest, "README.txt"), []byte(readme), 0644)

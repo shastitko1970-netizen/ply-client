@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const UA = "Ply/1.3"
+const UA = "Ply/1.4"
 
 type Node struct {
 	UUID, Host, Flow, Security, Network, SNI, FP, PBK, SID, Spx, Enc string
@@ -155,24 +155,50 @@ func Resolve(source string) (*Node, error) {
 	return ParseVLESS(vless)
 }
 
-func RenderXray(n *Node, port int) ([]byte, error) {
-	rules := []any{
-		map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},
-		map[string]any{"type": "field", "network": "udp", "port": "443", "outboundTag": "block"},
-	}
+func RenderXray(n *Node, port int, split bool) ([]byte, error) {
+	rules := []any{}
 	if ip := net.ParseIP(n.Host); ip != nil {
-		rules = append([]any{
-			map[string]any{"type": "field", "ip": []string{n.Host}, "outboundTag": "direct"},
-		}, rules...)
+		rules = append(rules, map[string]any{"type": "field", "ip": []string{n.Host}, "outboundTag": "direct"})
 	}
-	rules = append(rules, map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"})
+	rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"})
+	if split {
+		rules = append(rules,
+			map[string]any{"type": "field", "domain": RussiaDirectDomains(), "outboundTag": "direct"},
+			map[string]any{"type": "field", "ip": RussiaDirectIPs(), "outboundTag": "direct"},
+		)
+	}
+	rules = append(rules,
+		map[string]any{"type": "field", "network": "udp", "port": "443", "outboundTag": "block"},
+		map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"},
+	)
+
+	dns := map[string]any{
+		"servers":       []any{"1.1.1.1", "8.8.8.8"},
+		"queryStrategy": "UseIPv4",
+	}
+	if split {
+		dns = map[string]any{
+			"servers": []any{
+				map[string]any{
+					"address":      "77.88.8.8",
+					"domains":      RussiaDirectDomains(),
+					"skipFallback": true,
+				},
+				"1.1.1.1",
+				"8.8.8.8",
+			},
+			"queryStrategy": "UseIPv4",
+		}
+	}
+
+	strategy := "AsIs"
+	if split {
+		strategy = "IPIfNonMatch"
+	}
 
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
-		"dns": map[string]any{
-			"servers":       []string{"1.1.1.1", "8.8.8.8"},
-			"queryStrategy": "UseIPv4",
-		},
+		"dns": dns,
 		"inbounds": []any{
 			map[string]any{
 				"tag":      "tun",
@@ -188,7 +214,7 @@ func RenderXray(n *Node, port int) ([]byte, error) {
 				},
 				"sniffing": map[string]any{
 					"enabled":      true,
-					"destOverride": []string{"http", "tls"},
+					"destOverride": []string{"http", "tls", "quic"},
 				},
 			},
 			map[string]any{
@@ -198,7 +224,7 @@ func RenderXray(n *Node, port int) ([]byte, error) {
 				"protocol": "mixed",
 				"sniffing": map[string]any{
 					"enabled":      true,
-					"destOverride": []string{"http", "tls"},
+					"destOverride": []string{"http", "tls", "quic"},
 				},
 				"settings": map[string]any{"auth": "noauth", "udp": true},
 			},
@@ -234,7 +260,7 @@ func RenderXray(n *Node, port int) ([]byte, error) {
 			map[string]any{"tag": "block", "protocol": "blackhole"},
 		},
 		"routing": map[string]any{
-			"domainStrategy": "AsIs",
+			"domainStrategy": strategy,
 			"rules":          rules,
 		},
 	}

@@ -52,7 +52,7 @@ func TestRenderXrayHasTUN(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := RenderXray(n, 10808)
+	b, err := RenderXray(n, 10808, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,5 +67,43 @@ func TestRenderXrayHasTUN(t *testing.T) {
 	}
 	if !strings.Contains(s, "2.27.175.32") {
 		t.Fatal("server ip should be direct")
+	}
+	if strings.Contains(s, "geoip:ru") {
+		t.Fatal("full tunnel should not bypass ru")
+	}
+}
+
+func TestRenderXraySplitRussia(t *testing.T) {
+	raw := "vless://0de5863f-fb38-473b-95b6-1a355c5345fd@2.27.175.32:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=firefox&sni=www.elastic.co&sid=&pbk=3rdiCNo7h8FvYrC7WdPYcTt7M2g8PhlRy9eCI2hLDB0"
+	n, err := ParseVLESS(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := RenderXray(n, 10808, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, need := range []string{
+		"geoip:ru",
+		"geosite:tld-ru",
+		"geosite:category-ru",
+		"geosite:yandex",
+		"geosite:vk",
+		".ru$",
+		"xn--p1ai",
+		"IPIfNonMatch",
+		"77.88.8.8",
+		"domain:vk.com",
+	} {
+		if !strings.Contains(s, need) {
+			t.Fatalf("split config missing %s", need)
+		}
+	}
+}
+
+func TestReadSplitDefaultOn(t *testing.T) {
+	if !ReadSplit() {
+		t.Fatal("missing file should mean Russia-direct on")
 	}
 }

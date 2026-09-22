@@ -49,6 +49,7 @@ type ui struct {
 	checkUpd   widget.Clickable
 	applyUpd   widget.Clickable
 	auto       widget.Bool
+	split      widget.Bool
 	busy       bool
 	admin      bool
 	trayOn     bool
@@ -73,8 +74,8 @@ func main() {
 		w := new(app.Window)
 		w.Option(
 			app.Title(core.WindowTitle),
-			app.Size(unit.Dp(460), unit.Dp(760)),
-			app.MinSize(unit.Dp(400), unit.Dp(600)),
+			app.Size(unit.Dp(460), unit.Dp(800)),
+			app.MinSize(unit.Dp(400), unit.Dp(620)),
 		)
 		if err := run(w); err != nil {
 			log.Fatal(err)
@@ -96,6 +97,7 @@ func run(w *app.Window) error {
 	u.url.SingleLine = true
 	u.url.Submit = true
 	u.auto.Value = true
+	u.split.Value = core.ReadSplit()
 	if saved := core.ReadURL(); saved != "" {
 		u.url.SetText(saved)
 	}
@@ -164,6 +166,17 @@ func (u *ui) update(gtx layout.Context) {
 		exe, _ := os.Executable()
 		_ = core.SetAutoStart(u.auto.Value, exe)
 	}
+	if u.split.Update(gtx) {
+		_ = core.SaveSplit(u.split.Value)
+		if u.live && u.admin && !u.busy {
+			src := strings.TrimSpace(u.url.Text())
+			auto := u.auto.Value
+			u.busy = true
+			u.err = ""
+			u.status = "переключаю маршрут"
+			go u.doConnect(src, auto)
+		}
+	}
 	if u.elevate.Clicked(gtx) && !u.admin {
 		if err := core.RelaunchElevated(); err != nil {
 			u.err = err.Error()
@@ -211,7 +224,11 @@ func (u *ui) doConnect(src string, auto bool) {
 	u.node = s.Node
 	u.exitIP = s.ExitIP
 	u.live = true
-	u.status = "VPN включён"
+	if s.Split {
+		u.status = "VPN · Россия мимо"
+	} else {
+		u.status = "VPN включён"
+	}
 	u.detail = fmt.Sprintf("%s:%d   %s", s.Node.Host, s.Node.Port, s.Node.SNI)
 	u.err = ""
 	u.busy = false
@@ -312,7 +329,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				b := material.Body2(u.th, "1. Вставь ссылку Paper\n2. Нажми «Включить VPN»\n3. Крестик сворачивает в трей — туннель не гаснет\n4. Выход только из значка у часов\n5. Если на GitHub выйдет новая версия — Ply сама предложит обновить")
+				b := material.Body2(u.th, "1. Вставь ссылку Paper\n2. Нажми «Включить VPN»\n3. Россия (.ru, .рф, Яндекс, VK) — мимо VPN, остальное в туннель\n4. Крестик — в трей. Выход из значка у часов")
 				b.Color = colMuted
 				return b.Layout(gtx)
 			}),
@@ -365,6 +382,12 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 				cb.IconColor = colAccent
 				return cb.Layout(gtx)
 			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				cb := material.CheckBox(u.th, &u.split, "Россия напрямую")
+				cb.Color = colMuted
+				cb.IconColor = colAccent
+				return cb.Layout(gtx)
+			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return u.layoutUpdate(gtx)
@@ -381,7 +404,10 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 					if ip == "" {
 						ip = "проверяю…"
 					}
-					msg := "Маршрут Windows через Ply Tunnel. Значок у часов.\nВыход  " + ip
+					msg := "Чужие сайты через туннель. Выход  " + ip
+					if u.split.Value {
+						msg = "Россия напрямую (.ru, .рф, российские IP).\nОстальное через туннель. Выход  " + ip
+					}
 					if u.detail != "" {
 						msg += "\nУзел   " + u.detail
 					}
@@ -395,7 +421,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Flexed(1, layout.Spacer{}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				hint := "Ply  ·  v" + core.Version + "  ·  туннель  ·  автообновление"
+				hint := "Ply  ·  v" + core.Version + "  ·  split  ·  автообновление"
 				if runtime.GOOS != "windows" {
 					hint = "Ply  ·  v" + core.Version
 				}

@@ -20,6 +20,7 @@ const LocalPort = 10808
 type Session struct {
 	Node   *Node
 	ExitIP string
+	Split  bool
 }
 
 var (
@@ -306,7 +307,8 @@ func Connect(source string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := RenderXray(n, LocalPort)
+	split := ReadSplit()
+	cfg, err := RenderXray(n, LocalPort, split)
 	if err != nil {
 		return nil, err
 	}
@@ -373,9 +375,13 @@ func Connect(source string) (*Session, error) {
 	startWatchdog()
 	ip := ProbeExitIP()
 	if runtime.GOOS == "windows" {
-		TrayBalloon("Ply", "VPN включён. Весь IPv4 через Ply Tunnel.")
+		note := "VPN включён. Весь IPv4 через Ply Tunnel."
+		if split {
+			note = "VPN включён. Россия напрямую, остальное через туннель."
+		}
+		TrayBalloon("Ply", note)
 	}
-	return &Session{Node: n, ExitIP: ip}, nil
+	return &Session{Node: n, ExitIP: ip, Split: split}, nil
 }
 
 func Disconnect() error {
