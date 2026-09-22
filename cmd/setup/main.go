@@ -61,8 +61,8 @@ func main() {
 		w := new(app.Window)
 		w.Option(
 			app.Title("Ply — установка"),
-			app.Size(unit.Dp(480), unit.Dp(680)),
-			app.MinSize(unit.Dp(420), unit.Dp(560)),
+			app.Size(unit.Dp(620), unit.Dp(520)),
+			app.MinSize(unit.Dp(400), unit.Dp(440)),
 		)
 		if err := run(w); err != nil {
 			log.Fatal(err)
@@ -148,7 +148,7 @@ func (u *ui) doInstall() {
 		u.fail("архив: " + err.Error())
 		return
 	}
-	u.status = "Распаковка"
+	u.status = "Ставлю ядро Xray"
 	u.w.Invalidate()
 	err = core.ExtractZip(zr, u.dest, func(done, total uint64) {
 		if total > 0 {
@@ -186,7 +186,7 @@ func (u *ui) doInstall() {
 		"КАК ЗАПУСТИТЬ\r\n" +
 		"1. Ply стоит в Program Files. Ищи «Ply» в меню Пуск или на рабочем столе.\r\n" +
 		"2. Согласись на права администратора.\r\n" +
-		"3. Вставь ключ (Paper / vless / vmess / trojan / ss), нажми кнопку питания.\r\n" +
+		"3. Вставь ключ (Paper / vless / hy2 / vmess / trojan / ss), нажми кнопку питания.\r\n" +
 		"4. Крестик сворачивает в трей — туннель живой. Выход только из значка у часов.\r\n" +
 		"5. «Россия мимо» — .ru и российские сервисы без VPN.\r\n" +
 		"6. Новые версии Ply скачает сама.\r\n\r\n" +
@@ -247,7 +247,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				line := "Установщик Windows  ·  VPN-туннель  ·  Xray внутри"
+				line := "Ядро Xray ставится само. Go качать не надо."
 				if u.oldVer != "" && u.oldVer != core.Version {
 					line = "Обновление " + u.oldVer + " → " + core.Version + ". Ссылка Paper останется."
 				}
@@ -349,7 +349,7 @@ func (u *ui) layout(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				t := material.Caption(u.th, fmt.Sprintf("Ply  ·  v%s  ·  Paper  ·  Xray TUN", core.Version))
+				t := material.Caption(u.th, fmt.Sprintf("Ply  ·  v%s  ·  ядро Xray внутри", core.Version))
 				t.Color = plyui.Dim
 				t.Alignment = text.Middle
 				return t.Layout(gtx)

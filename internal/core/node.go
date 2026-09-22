@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const UA = "Ply/1.7"
+const UA = "Ply/1.8"
 
 type Node struct {
 	Proto    string
@@ -36,12 +36,21 @@ type Node struct {
 	Header   string
 	AlterID  int
 	Insecure bool
+	Obfs     string
+	ObfsPass string
+	Pin      string
 	Remark   string
 }
 
 func (n *Node) Label() string {
 	if n == nil {
 		return ""
+	}
+	if n.Proto == "hysteria" {
+		if n.Obfs != "" {
+			return "hy2 · " + n.Obfs
+		}
+		return "hy2 · tls"
 	}
 	p := n.Proto
 	if p == "" {
@@ -132,7 +141,7 @@ func Resolve(source string) (*Node, error) {
 		}
 		return ParseLink(line)
 	default:
-		return nil, fmt.Errorf("нужна ссылка подписки или ключ vless/vmess/trojan/ss")
+		return nil, fmt.Errorf("нужна ссылка подписки или ключ vless/vmess/trojan/ss/hy2")
 	}
 }
 
@@ -226,6 +235,17 @@ func RenderXray(n *Node, port int, split bool) ([]byte, error) {
 func (n *Node) outbound() map[string]any {
 	mux := map[string]any{"enabled": false, "concurrency": -1}
 	switch n.Proto {
+	case "hysteria":
+		return map[string]any{
+			"tag":      "proxy",
+			"protocol": "hysteria",
+			"settings": map[string]any{
+				"version": 2,
+				"address": n.Host,
+				"port":    n.Port,
+			},
+			"streamSettings": n.hysteriaStream(),
+		}
 	case "vmess":
 		return map[string]any{
 			"tag":      "proxy",
@@ -396,6 +416,54 @@ func (n *Node) streamSettings() map[string]any {
 			ss["tcpSettings"] = map[string]any{
 				"header": map[string]any{"type": "http"},
 			}
+		}
+	}
+	return ss
+}
+
+func (n *Node) hysteriaStream() map[string]any {
+	tls := map[string]any{
+		"allowInsecure": n.Insecure,
+		"fingerprint":   firstNonEmpty(n.FP, "chrome"),
+		"alpn":          []string{"h3"},
+	}
+	if n.SNI != "" {
+		tls["serverName"] = n.SNI
+	}
+	if n.ALPN != "" && n.ALPN != "h3" {
+		parts := strings.Split(n.ALPN, ",")
+		alpn := make([]string, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				alpn = append(alpn, p)
+			}
+		}
+		if len(alpn) > 0 {
+			tls["alpn"] = alpn
+		}
+	}
+	if n.Pin != "" {
+		tls["pinnedPeerCertSha256"] = n.Pin
+	}
+	hy := map[string]any{
+		"version": 2,
+		"auth":    n.Password,
+	}
+	ss := map[string]any{
+		"network":          "hysteria",
+		"security":         "tls",
+		"tlsSettings":      tls,
+		"hysteriaSettings": hy,
+	}
+	if n.Obfs == "salamander" && n.ObfsPass != "" {
+		ss["finalmask"] = map[string]any{
+			"udp": []any{
+				map[string]any{
+					"type":     "salamander",
+					"settings": map[string]any{"password": n.ObfsPass},
+				},
+			},
 		}
 	}
 	return ss

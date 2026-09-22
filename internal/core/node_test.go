@@ -116,10 +116,62 @@ func TestParseSS(t *testing.T) {
 	}
 }
 
-func TestRejectHysteria(t *testing.T) {
-	_, err := ParseLink("hy2://pass@host:443?sni=x")
-	if err == nil || !strings.Contains(err.Error(), "Hysteria") {
-		t.Fatalf("err %v", err)
+func TestParseHy2(t *testing.T) {
+	raw := "hy2://letmein@example.com:443?insecure=1&sni=real.example.com&obfs=salamander&obfs-password=gawrgura#cool"
+	n, err := ParseLink(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Proto != "hysteria" || n.Password != "letmein" || n.Host != "example.com" || n.Port != 443 {
+		t.Fatalf("%+v", n)
+	}
+	if n.SNI != "real.example.com" || !n.Insecure || n.Obfs != "salamander" || n.ObfsPass != "gawrgura" {
+		t.Fatalf("tls/obfs %+v", n)
+	}
+	if n.Label() != "hy2 · salamander" {
+		t.Fatalf("label %s", n.Label())
+	}
+	b, err := RenderXray(n, 10808, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, need := range []string{
+		`"protocol": "hysteria"`,
+		`"network": "hysteria"`,
+		`"auth": "letmein"`,
+		`"serverName": "real.example.com"`,
+		`"type": "salamander"`,
+		`"hysteriaSettings"`,
+	} {
+		if !strings.Contains(s, need) {
+			t.Fatalf("missing %s in %s", need, s)
+		}
+	}
+	if strings.Contains(s, `"mux"`) {
+		t.Fatal("hy2 should not set mux")
+	}
+}
+
+func TestParseHy2HopPorts(t *testing.T) {
+	raw := "hysteria2://secret@node.example.net:443,5000-6000/?sni=node.example.net#eu"
+	n, err := ParseLink(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Host != "node.example.net" || n.Port != 443 || n.Password != "secret" {
+		t.Fatalf("%+v", n)
+	}
+}
+
+func TestRejectTuicAndHy1(t *testing.T) {
+	_, err := ParseLink("tuic://pass@host:443")
+	if err == nil || !strings.Contains(err.Error(), "TUIC") {
+		t.Fatalf("tuic %v", err)
+	}
+	_, err = ParseLink("hysteria://pass@host:443")
+	if err == nil || !strings.Contains(err.Error(), "Hysteria v1") {
+		t.Fatalf("hy1 %v", err)
 	}
 }
 
@@ -137,8 +189,16 @@ func TestFirstShareFromBase64Sub(t *testing.T) {
 	}
 }
 
-func TestFirstShareSkipsHysteria(t *testing.T) {
-	body := "hy2://pass@h:443\n" + paper + "\n"
+func TestFirstSharePicksHy2(t *testing.T) {
+	body := "hy2://pass@h:443?sni=x\n" + paper + "\n"
+	line, err := FirstShareLine(body)
+	if err != nil || !strings.HasPrefix(line, "hy2://") {
+		t.Fatalf("%q %v", line, err)
+	}
+}
+
+func TestFirstShareSkipsHysteriaV1(t *testing.T) {
+	body := "hysteria://pass@h:443\n" + paper + "\n"
 	line, err := FirstShareLine(body)
 	if err != nil || !strings.HasPrefix(line, "vless://") {
 		t.Fatalf("%q %v", line, err)

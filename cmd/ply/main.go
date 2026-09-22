@@ -52,6 +52,7 @@ type ui struct {
 	updBusy  bool
 	updNote  string
 	t0       time.Time
+	scroll   widget.List
 }
 
 func main() {
@@ -64,8 +65,8 @@ func main() {
 		w := new(app.Window)
 		w.Option(
 			app.Title(core.WindowTitle),
-			app.Size(unit.Dp(440), unit.Dp(760)),
-			app.MinSize(unit.Dp(400), unit.Dp(640)),
+			app.Size(unit.Dp(900), unit.Dp(600)),
+			app.MinSize(unit.Dp(380), unit.Dp(480)),
 		)
 		if err := run(w); err != nil {
 			log.Fatal(err)
@@ -79,6 +80,7 @@ func run(w *app.Window) error {
 	th := plyui.NewTheme()
 
 	u := &ui{w: w, th: th, admin: core.IsAdmin(), status: "ожидание", t0: time.Now()}
+	u.scroll.Axis = layout.Vertical
 	u.url.SingleLine = true
 	u.url.Submit = true
 	u.auto.Value = true
@@ -296,26 +298,135 @@ func (u *ui) applyUpdate() {
 	os.Exit(0)
 }
 
+func (u *ui) wide(gtx layout.Context) bool {
+	return gtx.Constraints.Max.X >= gtx.Dp(640)
+}
+
+func (u *ui) row2(gtx layout.Context, a, b layout.Widget) layout.Dimensions {
+	if gtx.Constraints.Max.X < gtx.Dp(400) {
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(a),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+			layout.Rigid(b),
+		)
+	}
+	return layout.Flex{Alignment: layout.Start}.Layout(gtx,
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			gtx.Constraints.Min.X = 0
+			return a(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Width: unit.Dp(12)}.Layout),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			gtx.Constraints.Min.X = 0
+			return b(gtx)
+		}),
+	)
+}
+
 func (u *ui) layout(gtx layout.Context) layout.Dimensions {
-	return layout.UniformInset(unit.Dp(24)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	inset := layout.Inset{Top: unit.Dp(22), Bottom: unit.Dp(16), Left: unit.Dp(24), Right: unit.Dp(24)}
+	return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(u.layoutHeader),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(28)}.Layout),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return layout.Center.Layout(gtx, u.layoutPower)
-			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
-			layout.Rigid(u.layoutPowerCaption),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(24)}.Layout),
-			layout.Rigid(u.layoutURL),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
-			layout.Rigid(u.layoutMeta),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
-			layout.Rigid(u.layoutUpdate),
-			layout.Flexed(1, layout.Spacer{}.Layout),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(18)}.Layout),
+			layout.Flexed(1, u.layoutMain),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 			layout.Rigid(u.layoutFooter),
 		)
 	})
+}
+
+func (u *ui) layoutMain(gtx layout.Context) layout.Dimensions {
+	lst := material.List(u.th, &u.scroll)
+	lst.AnchorStrategy = material.Overlay
+	if u.wide(gtx) {
+		return layout.Flex{Alignment: layout.Start, Spacing: layout.SpaceStart}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				gtx.Constraints.Min.X = gtx.Dp(240)
+				gtx.Constraints.Max.X = gtx.Dp(300)
+				gtx.Constraints.Min.Y = gtx.Constraints.Max.Y
+				return u.layoutHero(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Width: unit.Dp(28)}.Layout),
+			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+				return lst.Layout(gtx, 1, func(gtx layout.Context, _ int) layout.Dimensions {
+					gtx.Constraints.Min.X = gtx.Constraints.Max.X
+					return u.layoutCards(gtx)
+				})
+			}),
+		)
+	}
+	return lst.Layout(gtx, 1, func(gtx layout.Context, _ int) layout.Dimensions {
+		gtx.Constraints.Min.X = gtx.Constraints.Max.X
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return layout.Center.Layout(gtx, u.layoutPower)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
+			layout.Rigid(u.layoutPowerCaption),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
+			layout.Rigid(u.layoutCards),
+		)
+	})
+}
+
+func (u *ui) layoutHero(gtx layout.Context) layout.Dimensions {
+	return layout.Flex{Axis: layout.Vertical, Alignment: layout.Middle}.Layout(gtx,
+		layout.Flexed(1, layout.Spacer{}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Center.Layout(gtx, u.layoutPower)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
+		layout.Rigid(u.layoutPowerCaption),
+		layout.Flexed(1, layout.Spacer{}.Layout),
+	)
+}
+
+func (u *ui) layoutToggleCard(gtx layout.Context, b *widget.Bool, title, sub string) layout.Dimensions {
+	return plyui.Card(gtx, func(gtx layout.Context) layout.Dimensions {
+		return plyui.SwitchRow(gtx, u.th, b, title, sub)
+	})
+}
+
+func (u *ui) layoutCards(gtx layout.Context) layout.Dimensions {
+	children := []layout.FlexChild{
+		layout.Rigid(u.layoutURL),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.row2(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return u.layoutToggleCard(gtx, &u.split, "Россия мимо", ".ru · Яндекс · VK")
+				},
+				func(gtx layout.Context) layout.Dimensions {
+					return u.layoutToggleCard(gtx, &u.auto, "Автозапуск", "с Windows")
+				},
+			)
+		}),
+	}
+	switch {
+	case u.hasMeta() && u.upd != nil:
+		children = append(children,
+			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.row2(gtx, u.layoutMeta, u.layoutUpdate)
+			}),
+		)
+	case u.hasMeta():
+		children = append(children,
+			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+			layout.Rigid(u.layoutMeta),
+		)
+	case u.upd != nil:
+		children = append(children,
+			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+			layout.Rigid(u.layoutUpdate),
+		)
+	}
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
+}
+
+func (u *ui) hasMeta() bool {
+	return u.err != "" || !u.admin || u.live
 }
 
 func (u *ui) layoutHeader(gtx layout.Context) layout.Dimensions {
@@ -342,7 +453,7 @@ func (u *ui) layoutHeader(gtx layout.Context) layout.Dimensions {
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			t := material.Body2(u.th, "Windows VPN. Paper, vless, vmess, trojan или ss. Туннель, не системный прокси.")
+			t := material.Body2(u.th, "Windows VPN. Paper, vless, hy2, vmess, trojan или ss. Туннель, не системный прокси.")
 			t.Color = plyui.Muted
 			return t.Layout(gtx)
 		}),
@@ -427,20 +538,8 @@ func (u *ui) layoutURL(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return plyui.SwitchLabel(gtx, u.th, &u.split, "Россия мимо")
-					}),
-					layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return plyui.SwitchLabel(gtx, u.th, &u.auto, "Автозапуск")
-					}),
-				)
-			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return plyui.Input(gtx, func(gtx layout.Context) layout.Dimensions {
-					ed := material.Editor(u.th, &u.url, "vless://  vmess://  trojan://  ss://  или https://…")
+					ed := material.Editor(u.th, &u.url, "vless://  hy2://  vmess://  trojan://  ss://  или https://…")
 					ed.Color = plyui.Fg
 					ed.HintColor = plyui.Dim
 					ed.TextSize = 13
@@ -449,7 +548,7 @@ func (u *ui) layoutURL(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				t := material.Caption(u.th, "Paper, любой vless/vmess/trojan/ss. Подписка — первая строка. #хвост отрежется. Россия мимо — .ru/.рф/Яндекс/VK.")
+				t := material.Caption(u.th, "Paper, vless/vmess/trojan/ss/hy2. Подписка — первая строка. #хвост отрежется. TUIC Xray не умеет.")
 				t.Color = plyui.Dim
 				return t.Layout(gtx)
 			}),

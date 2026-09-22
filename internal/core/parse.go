@@ -15,18 +15,20 @@ func isShare(s string) bool {
 	return strings.HasPrefix(s, "vless://") ||
 		strings.HasPrefix(s, "vmess://") ||
 		strings.HasPrefix(s, "trojan://") ||
-		strings.HasPrefix(s, "ss://")
+		strings.HasPrefix(s, "ss://") ||
+		strings.HasPrefix(s, "hysteria2://") ||
+		strings.HasPrefix(s, "hy2://")
 }
 
 func rejectUnsupported(s string) error {
 	low := strings.ToLower(strings.TrimSpace(s))
 	switch {
-	case strings.HasPrefix(low, "hysteria2://"), strings.HasPrefix(low, "hy2://"), strings.HasPrefix(low, "hysteria://"):
-		return fmt.Errorf("Hysteria Xray не умеет — нужен vless, vmess, trojan или ss")
+	case strings.HasPrefix(low, "hysteria://"):
+		return fmt.Errorf("Hysteria v1 Xray не умеет — нужен hy2://, vless, vmess, trojan или ss")
 	case strings.HasPrefix(low, "tuic://"):
-		return fmt.Errorf("TUIC Xray не умеет — нужен vless, vmess, trojan или ss")
+		return fmt.Errorf("TUIC Xray не умеет — нужен hy2, vless, vmess, trojan или ss")
 	case strings.HasPrefix(low, "wireguard://"), strings.HasPrefix(low, "wg://"):
-		return fmt.Errorf("WireGuard-ключ пока не разбираю — нужен vless, vmess, trojan или ss")
+		return fmt.Errorf("WireGuard-ключ пока не разбираю — нужен vless, vmess, trojan, ss или hy2")
 	}
 	return nil
 }
@@ -114,7 +116,7 @@ func FirstShareLine(body string) (string, error) {
 	if unsupported != nil {
 		return "", unsupported
 	}
-	return "", fmt.Errorf("в ответе нет ключа vless/vmess/trojan/ss")
+	return "", fmt.Errorf("в ответе нет ключа vless/vmess/trojan/ss/hy2")
 }
 
 func FirstVLESS(body string) (string, error) {
@@ -136,6 +138,8 @@ func ParseLink(raw string) (*Node, error) {
 		return ParseTrojan(raw)
 	case strings.HasPrefix(low, "ss://"):
 		return ParseSS(raw)
+	case strings.HasPrefix(low, "hysteria2://"), strings.HasPrefix(low, "hy2://"):
+		return ParseHysteria(raw)
 	default:
 		return nil, fmt.Errorf("не ключ")
 	}
@@ -327,6 +331,75 @@ func ParseSS(raw string) (*Node, error) {
 		Security: "none",
 		Remark:   remark,
 	}, nil
+}
+
+func collapseHopPorts(raw string) string {
+	at := strings.LastIndex(raw, "@")
+	if at < 0 {
+		return raw
+	}
+	rest := raw[at+1:]
+	cut := len(rest)
+	if i := strings.IndexAny(rest, "/?"); i >= 0 {
+		cut = i
+	}
+	hp := rest[:cut]
+	if i := strings.Index(hp, ","); i >= 0 {
+		hp = hp[:i]
+	}
+	return raw[:at+1] + hp + rest[cut:]
+}
+
+func ParseHysteria(raw string) (*Node, error) {
+	body, remark := splitRemark(raw)
+	low := strings.ToLower(body)
+	if !strings.HasPrefix(low, "hysteria2://") && !strings.HasPrefix(low, "hy2://") {
+		return nil, fmt.Errorf("не hysteria2")
+	}
+	body = collapseHopPorts(body)
+	u, err := url.Parse(body)
+	if err != nil {
+		return nil, fmt.Errorf("разобрать hy2: %w", err)
+	}
+	q := u.Query()
+	auth := ""
+	if u.User != nil {
+		auth = u.User.Username()
+		if p, ok := u.User.Password(); ok && p != "" {
+			auth = auth + ":" + p
+		}
+	}
+	if auth == "" {
+		auth = q.Get("auth")
+	}
+	obfs := strings.ToLower(q.Get("obfs"))
+	obfsPass := firstNonEmpty(q.Get("obfs-password"), q.Get("obfsPassword"))
+	if obfs != "" && obfs != "salamander" {
+		return nil, fmt.Errorf("obfs %s Xray не умеет — только salamander", obfs)
+	}
+	n := &Node{
+		Proto:    "hysteria",
+		Password: auth,
+		Host:     u.Hostname(),
+		Port:     portOf(u, 443),
+		Security: "tls",
+		Network:  "hysteria",
+		SNI:      firstNonEmpty(q.Get("sni"), q.Get("peer")),
+		FP:       firstNonEmpty(q.Get("fp"), q.Get("fingerprint"), "chrome"),
+		ALPN:     firstNonEmpty(q.Get("alpn"), "h3"),
+		Insecure: truthy(firstNonEmpty(q.Get("insecure"), q.Get("allowInsecure"))),
+		Obfs:     obfs,
+		ObfsPass: obfsPass,
+		Pin:      firstNonEmpty(q.Get("pinSHA256"), q.Get("pinsha256"), q.Get("pin")),
+		Remark:   remark,
+	}
+	if n.SNI == "" && net.ParseIP(n.Host) == nil {
+		n.SNI = n.Host
+	}
+	if n.Password == "" || n.Host == "" {
+		return nil, fmt.Errorf("битый hy2: нет пароля или хоста")
+	}
+	return n, nil
 }
 
 func normalizeTransport(n *Node) {
