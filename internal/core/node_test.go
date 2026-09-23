@@ -237,20 +237,13 @@ func TestRenderXrayHasTUN(t *testing.T) {
 	if !strings.Contains(s, `"mtu": 1400`) {
 		t.Fatal("tun mtu should be 1400")
 	}
-	if !strings.Contains(s, `"quic"`) {
-		t.Fatal("sniffing should see quic, otherwise HTTP/3 AI dies")
+	if strings.Contains(s, "routeOnly") || strings.Contains(s, "quic") || strings.Contains(s, "tcpMaxSeg") {
+		t.Fatal("full tunnel must not sniff or clamp the server socket")
 	}
-	if !strings.Contains(s, `"routeOnly": true`) {
-		t.Fatal("sniffing should be routeOnly")
-	}
-	if strings.Contains(s, "blackhole") || strings.Contains(s, `"network": "udp"`) {
-		t.Fatal("udp/443 must stay open")
-	}
-	if !strings.Contains(s, `"detour": "proxy"`) {
-		t.Fatal("foreign DNS should resolve through the tunnel")
-	}
-	if !strings.Contains(s, `"tcpMaxSeg": 1360`) {
-		t.Fatal("tcpMaxSeg missing")
+	for _, need := range []string{`"dns-out"`, "dns-query", `"::/1"`, `"8000::/1"`} {
+		if !strings.Contains(s, need) {
+			t.Fatalf("config missing %s", need)
+		}
 	}
 	if strings.Contains(s, "IPIfNonMatch") {
 		t.Fatal("IPIfNonMatch is slow, want AsIs")
@@ -290,8 +283,25 @@ func TestRenderXraySplitRussia(t *testing.T) {
 			t.Fatalf("split config missing %s", need)
 		}
 	}
-	if strings.Contains(s, "IPIfNonMatch") {
-		t.Fatal("split should not use IPIfNonMatch")
+	if strings.Contains(s, "IPIfNonMatch") || strings.Contains(s, "quic") {
+		t.Fatal("split should not use IPIfNonMatch or quic sniff")
+	}
+	if !strings.Contains(s, "dns-query") || !strings.Contains(s, `"dns-out"`) {
+		t.Fatal("foreign DNS should be DoH via dns-out")
+	}
+}
+
+func TestHy2UsesSmallMTU(t *testing.T) {
+	n, err := ParseLink("hy2://letmein@example.com:443?insecure=1&sni=real.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := RenderXray(n, 10808, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"mtu": 1200`) {
+		t.Fatal("hy2 tun mtu should be 1200 so UDP fits the path")
 	}
 }
 

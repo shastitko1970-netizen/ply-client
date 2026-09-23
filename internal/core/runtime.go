@@ -333,6 +333,7 @@ func Connect(source string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	n.pinDialIP()
 	split := ReadSplit()
 	cfg, err := RenderXrayTun(n, LocalPort, split, -1, EffectiveMTU())
 	if err != nil {
@@ -379,8 +380,10 @@ func Connect(source string) (*Session, error) {
 			StopXray()
 			return nil, fmt.Errorf("туннель: %s\n%s", msg, tailLog(6))
 		}
-		PreferAdapterMetric()
-		lastServerIP = n.ServerIPv4()
+		lastServerIP = ""
+		if ip := net.ParseIP(n.dialAddr()); ip != nil && ip.To4() != nil {
+			lastServerIP = ip.To4().String()
+		}
 		_ = ApplyTunRoutes(lastServerIP)
 		ok := DefaultViaPly()
 		for i := 0; i < 5 && !ok; i++ {
@@ -399,15 +402,14 @@ func Connect(source string) (*Session, error) {
 	}
 	_ = SaveURL(source)
 	startWatchdog()
-	ip := ProbeExitIP()
 	if runtime.GOOS == "windows" {
-		note := "VPN включён. Весь трафик через Ply. Список VPN Windows не трогай."
+		note := "VPN включён. Весь трафик через Ply."
 		if split {
-			note = "VPN включён. РФ напрямую, остальное через туннель. Список VPN Windows не трогай."
+			note = "VPN включён. РФ напрямую, остальное через туннель."
 		}
 		TrayBalloon("Ply", note)
 	}
-	return &Session{Node: n, ExitIP: ip, Split: split}, nil
+	return &Session{Node: n, ExitIP: "", Split: split}, nil
 }
 
 func Disconnect() error {

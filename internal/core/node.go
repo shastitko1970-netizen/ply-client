@@ -40,6 +40,9 @@ type Node struct {
 	ObfsPass string `json:"obfsPass"`
 	Pin      string `json:"pin"`
 	Remark   string `json:"remark"`
+	// DialIP is the server IPv4 pinned before the tun comes up.
+	// The link host stays in Host so SNI and the window still show the name.
+	DialIP string `json:"-"`
 }
 
 func (n *Node) Label() string {
@@ -100,6 +103,33 @@ func (n *Node) ServerIPv4() string {
 	return ""
 }
 
+func (n *Node) pinDialIP() {
+	if n == nil || net.ParseIP(n.Host) != nil {
+		return
+	}
+	ip := n.ServerIPv4()
+	if ip == "" {
+		return
+	}
+	n.DialIP = ip
+	if n.SNI == "" {
+		n.SNI = n.Host
+	}
+	if n.HostHdr == "" {
+		n.HostHdr = n.Host
+	}
+}
+
+func (n *Node) dialAddr() string {
+	if n != nil && n.DialIP != "" {
+		return n.DialIP
+	}
+	if n == nil {
+		return ""
+	}
+	return n.Host
+}
+
 func FetchSub(sub string) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, StripSubHash(sub), nil)
 	if err != nil {
@@ -153,11 +183,20 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	if mtu == 0 {
 		mtu = EffectiveMTU()
 	}
+	// hy2 — это UDP снаружи. Пакет 1400 плюс обёртка уже не влезает в путь 1500:
+	// TCP еле живёт на ретрансмитах, а UDP (Telegram, HTTP/3, DNS) просто пропадает.
+	if n.Proto == "hysteria" && mtu > 1200 {
+		mtu = 1200
+	}
 	rules := []any{}
-	if ip := net.ParseIP(n.Host); ip != nil {
-		rules = append(rules, map[string]any{"type": "field", "ip": []string{n.Host}, "outboundTag": "direct"})
+	if ip := net.ParseIP(n.dialAddr()); ip != nil {
+		rules = append(rules, map[string]any{"type": "field", "ip": []string{ip.String()}, "outboundTag": "direct"})
 	}
 	rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"})
+	// Только из tun/socks. Иначе запрос самого DNS-модуля снова попадёт в dns-out.
+	rules = append(rules, map[string]any{
+		"type": "field", "inboundTag": []string{"tun", "socks"}, "port": "53", "outboundTag": "dns-out",
+	})
 	if split {
 		rules = append(rules,
 			map[string]any{"type": "field", "domain": RussiaDirectDomains(), "outboundTag": "direct"},
@@ -166,27 +205,29 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	}
 	rules = append(rules, map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"})
 
-	// QUIC не в чёрную дыру: ChatGPT, Claude, Gemini, Grok сидят на HTTP/3 (udp/443).
-	// Сплит .ru для HTTP/3 держится на sniff quic, а не на бане порта.
-	foreignDNS := map[string]any{"address": "1.1.1.1", "detour": "proxy"}
-	dns := map[string]any{
-		"servers":       []any{foreignDNS, "8.8.8.8"},
-		"queryStrategy": "UseIPv4",
+	// DoH через туннель, хост — IP, так что для самого запроса DNS не нужен и петли нет.
+	// UDP/53 наружу не шлём: его режут и он раздут для hy2.
+	foreignDNS := map[string]any{
+		"address": "https://1.1.1.1/dns-query",
+		"detour":  "proxy",
 	}
+	var dnsServers []any
 	if split {
-		dns = map[string]any{
-			"servers": []any{
-				map[string]any{
-					"address":      "77.88.8.8",
-					"domains":      RussiaDirectDomains(),
-					"skipFallback": true,
-					"detour":       "direct",
-				},
-				foreignDNS,
-				"8.8.8.8",
+		dnsServers = []any{
+			map[string]any{
+				"address":      "77.88.8.8",
+				"domains":      RussiaDirectDomains(),
+				"skipFallback": true,
+				"detour":       "direct",
 			},
-			"queryStrategy": "UseIPv4",
+			foreignDNS,
 		}
+	} else {
+		dnsServers = []any{foreignDNS}
+	}
+	dns := map[string]any{
+		"servers":       dnsServers,
+		"queryStrategy": "UseIPv4",
 	}
 
 	cfg := map[string]any{
@@ -202,22 +243,14 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 				"tag":      "tun",
 				"protocol": "tun",
 				"settings": tunSettings(tunFD, mtu),
-				"sniffing": map[string]any{
-					"enabled":      true,
-					"destOverride": []string{"http", "tls", "quic"},
-					"routeOnly":    true,
-				},
+				"sniffing": sniffing(split),
 			},
 			map[string]any{
 				"tag":      "socks",
 				"port":     port,
 				"listen":   "127.0.0.1",
 				"protocol": "mixed",
-				"sniffing": map[string]any{
-					"enabled":      true,
-					"destOverride": []string{"http", "tls", "quic"},
-					"routeOnly":    true,
-				},
+				"sniffing": sniffing(split),
 				"settings": map[string]any{"auth": "noauth", "udp": true},
 			},
 		},
@@ -228,6 +261,7 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 				"protocol": "freedom",
 				"settings": map[string]any{"domainStrategy": "UseIPv4"},
 			},
+			map[string]any{"tag": "dns-out", "protocol": "dns"},
 		},
 		"routing": map[string]any{
 			"domainStrategy": "AsIs",
@@ -237,8 +271,20 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
+func sniffing(split bool) map[string]any {
+	// Без сплита разбор не нужен: он держит первые пакеты Telegram и ломает QUIC.
+	if !split {
+		return map[string]any{"enabled": false}
+	}
+	return map[string]any{
+		"enabled":      true,
+		"destOverride": []string{"http", "tls"},
+		"routeOnly":    true,
+	}
+}
+
 func tunSettings(fd, mtu int) map[string]any {
-	if mtu != 1280 && mtu != 1400 && mtu != 1500 {
+	if mtu != 1200 && mtu != 1280 && mtu != 1400 && mtu != 1500 {
 		mtu = 1400
 	}
 	s := map[string]any{
@@ -250,9 +296,9 @@ func tunSettings(fd, mtu int) map[string]any {
 		s["fd"] = fd
 		return s
 	}
-	s["gateway"] = []string{"198.18.0.1/16"}
-	s["dns"] = []string{"1.1.1.1", "8.8.8.8"}
-	s["autoSystemRoutingTable"] = []string{"0.0.0.0/1", "128.0.0.0/1"}
+	s["gateway"] = []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
+	s["dns"] = []string{"1.1.1.1"}
+	s["autoSystemRoutingTable"] = []string{"0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"}
 	s["autoOutboundsInterface"] = "auto"
 	return s
 }
@@ -266,7 +312,7 @@ func (n *Node) outbound() map[string]any {
 			"protocol": "hysteria",
 			"settings": map[string]any{
 				"version": 2,
-				"address": n.Host,
+				"address": n.dialAddr(),
 				"port":    n.Port,
 			},
 			"streamSettings": n.hysteriaStream(),
@@ -278,7 +324,7 @@ func (n *Node) outbound() map[string]any {
 			"settings": map[string]any{
 				"vnext": []any{
 					map[string]any{
-						"address": n.Host,
+						"address": n.dialAddr(),
 						"port":    n.Port,
 						"users": []any{
 							map[string]any{
@@ -299,7 +345,7 @@ func (n *Node) outbound() map[string]any {
 			"settings": map[string]any{
 				"servers": []any{
 					map[string]any{
-						"address": n.Host, "port": n.Port,
+						"address": n.dialAddr(), "port": n.Port,
 						"password": firstNonEmpty(n.Password, n.UUID),
 					},
 				},
@@ -314,7 +360,7 @@ func (n *Node) outbound() map[string]any {
 			"settings": map[string]any{
 				"servers": []any{
 					map[string]any{
-						"address": n.Host, "port": n.Port,
+						"address": n.dialAddr(), "port": n.Port,
 						"method": n.Method, "password": n.Password,
 					},
 				},
@@ -333,7 +379,7 @@ func (n *Node) outbound() map[string]any {
 			"settings": map[string]any{
 				"vnext": []any{
 					map[string]any{
-						"address": n.Host,
+						"address": n.dialAddr(),
 						"port":    n.Port,
 						"users":   []any{user},
 					},
@@ -343,16 +389,6 @@ func (n *Node) outbound() map[string]any {
 			"mux":            mux,
 		}
 	}
-}
-
-func mssFor(mtu int) int {
-	if mtu == 1280 {
-		return 1240
-	}
-	if mtu == 1500 {
-		return 1460
-	}
-	return 1360
 }
 
 func (n *Node) streamSettings() map[string]any {
@@ -403,8 +439,6 @@ func (n *Node) streamSettings() map[string]any {
 	ss["sockopt"] = map[string]any{
 		"tcpNoDelay":       true,
 		"tcpKeepAliveIdle": 30,
-		"tcpMaxSeg":        mssFor(EffectiveMTU()),
-		"domainStrategy":   "UseIPv4",
 	}
 
 	switch netw {

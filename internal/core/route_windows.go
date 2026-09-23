@@ -147,16 +147,7 @@ if (-not (Test-Path -LiteralPath $stateFile)) {
     $cfg = Get-DnsClientServerAddress -InterfaceIndex $d.IfIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
     $dns += @{ IfIndex = $d.IfIndex; Servers = @($cfg.ServerAddresses) }
   }
-  $v6 = @(Get-NetRoute -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceIndex -ne $idx } | ForEach-Object {
-    @{ IfIndex = $_.InterfaceIndex; NextHop = [string]$_.NextHop; Metric = [int]$_.RouteMetric }
-  })
-  $smart = -1
-  $pol0 = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
-  if (Test-Path $pol0) {
-    $cur0 = Get-ItemProperty -Path $pol0 -Name DisableSmartNameResolution -ErrorAction SilentlyContinue
-    if ($null -ne $cur0 -and $null -ne $cur0.DisableSmartNameResolution) { $smart = [int]$cur0.DisableSmartNameResolution }
-  }
-  $obj = @{ defaults = $defs; metrics = $metrics; dns = $dns; serverIP = $serverIP; plyIf = $idx; v6 = $v6; smart = $smart }
+  $obj = @{ defaults = $defs; metrics = $metrics; dns = $dns; serverIP = $serverIP; plyIf = $idx }
   ($obj | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
 }
 
@@ -196,28 +187,9 @@ if ($serverIP -and $primary -and $primary.NextHop) {
   }
 }
 
-$names = @($state.PSObject.Properties.Name)
-if ($names -notcontains 'v6') {
-  $v6now = @(Get-NetRoute -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceIndex -ne $idx } | ForEach-Object {
-    @{ IfIndex = $_.InterfaceIndex; NextHop = [string]$_.NextHop; Metric = [int]$_.RouteMetric }
-  })
-  $state | Add-Member -NotePropertyName v6 -NotePropertyValue $v6now -Force
-  ($state | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
-}
-Get-NetRoute -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceIndex -ne $idx } | Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
-
 Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment -eq 'Ply' } | ForEach-Object {
   Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue
 }
-if ($env:PLY_SPLIT -eq '1') {
-  foreach ($ns in @('.ru','.su','.xn--p1ai','.yandex.ru','.yandex.com','.yandex.net','.ya.ru','.vk.com','.userapi.com','.vk-cdn.net','.vkuser.net','.mail.ru')) {
-    Add-DnsClientNrptRule -Namespace $ns -NameServers '77.88.8.8' -Comment 'Ply' -ErrorAction SilentlyContinue | Out-Null
-  }
-}
-Add-DnsClientNrptRule -Namespace '.' -NameServers @('1.1.1.1','8.8.8.8') -Comment 'Ply' -ErrorAction SilentlyContinue | Out-Null
-$pol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
-if (-not (Test-Path $pol)) { New-Item -Path $pol -Force | Out-Null }
-New-ItemProperty -Path $pol -Name DisableSmartNameResolution -Value 1 -PropertyType DWord -Force | Out-Null
 
 route delete 0.0.0.0 mask 128.0.0.0 | Out-Null
 route delete 128.0.0.0 mask 128.0.0.0 | Out-Null
@@ -236,6 +208,8 @@ $state = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
 
 route delete 0.0.0.0 mask 128.0.0.0 | Out-Null
 route delete 128.0.0.0 mask 128.0.0.0 | Out-Null
+Remove-NetRoute -DestinationPrefix '::/1' -Confirm:$false -ErrorAction SilentlyContinue
+Remove-NetRoute -DestinationPrefix '8000::/1' -Confirm:$false -ErrorAction SilentlyContinue
 if ($state.serverIP) {
   route delete $state.serverIP mask 255.255.255.255 | Out-Null
 }

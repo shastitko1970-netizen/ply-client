@@ -377,13 +377,24 @@ func daemonConnect(src string, auto bool) {
 		s.Error = ""
 		s.Status = status
 		s.Detail = detail
-		s.ExitIP = sess.ExitIP
+		s.ExitIP = ""
 		s.Node = sess.Node
 		s.Split = sess.Split
 		if auto {
 			s.Auto = true
 		}
 	})
+	go func() {
+		ip := ProbeExitIP()
+		if ip == "" {
+			return
+		}
+		setSnap(func(s *Snapshot) {
+			if s.Live {
+				s.ExitIP = ip
+			}
+		})
+	}()
 	if auto {
 		p := LoadPrefs()
 		p.Auto = true
