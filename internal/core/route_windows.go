@@ -131,6 +131,16 @@ $stateFile = $env:PLY_STATE
 $serverIP = $env:PLY_SERVER
 if (-not $stateFile) { Write-Output 'NO_STATE'; exit 2 }
 
+$pol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+function Get-PlySmart {
+  if (-not (Test-Path -LiteralPath $pol)) { return -1 }
+  $p = Get-ItemProperty -Path $pol -Name DisableSmartNameResolution -ErrorAction SilentlyContinue
+  if ($null -eq $p) { return -1 }
+  $v = $p.DisableSmartNameResolution
+  if ($null -eq $v) { return -1 }
+  return [int]$v
+}
+
 $ply = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and ($_.InterfaceDescription -match 'Ply' -or $_.Name -match 'Ply') } | Select-Object -First 1
 if (-not $ply) { Write-Output 'NO_PLY'; exit 3 }
 $idx = [int]$ply.ifIndex
@@ -147,7 +157,8 @@ if (-not (Test-Path -LiteralPath $stateFile)) {
     $cfg = Get-DnsClientServerAddress -InterfaceIndex $d.IfIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
     $dns += @{ IfIndex = $d.IfIndex; Servers = @($cfg.ServerAddresses) }
   }
-  $obj = @{ defaults = $defs; metrics = $metrics; dns = $dns; serverIP = $serverIP; plyIf = $idx }
+  $smartNow = Get-PlySmart
+  $obj = @{ defaults = $defs; metrics = $metrics; dns = $dns; serverIP = $serverIP; plyIf = $idx; smart = $smartNow }
   ($obj | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
 }
 
@@ -187,8 +198,28 @@ if ($serverIP -and $primary -and $primary.NextHop) {
   }
 }
 
-Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment -eq 'Ply' } | ForEach-Object {
-  Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue
+if ($null -eq $state.PSObject.Properties['smart']) {
+  $state | Add-Member -NotePropertyName 'smart' -NotePropertyValue (Get-PlySmart) -Force
+  ($state | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
+}
+
+if (-not (Test-Path -LiteralPath $pol)) { New-Item -Path $pol -Force | Out-Null }
+New-ItemProperty -Path $pol -Name DisableSmartNameResolution -Value 1 -PropertyType DWord -Force | Out-Null
+
+$plyNrpt = @(Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment -eq 'Ply' })
+$good = @($plyNrpt | Where-Object { $_.Namespace -eq '.' -and @($_.NameServers) -contains '1.1.1.1' })
+if ($good.Count -eq 0) {
+  foreach ($r in $plyNrpt) {
+    Remove-DnsClientNrptRule -Name $r.Name -Force -ErrorAction SilentlyContinue
+  }
+  try { Add-DnsClientNrptRule -Namespace '.' -NameServers '1.1.1.1' -Comment 'Ply' -ErrorAction Stop | Out-Null } catch {}
+}
+
+Remove-NetRoute -DestinationPrefix '::/1' -Confirm:$false -ErrorAction SilentlyContinue
+Remove-NetRoute -DestinationPrefix '8000::/1' -Confirm:$false -ErrorAction SilentlyContinue
+netsh advfirewall firewall show rule name='Ply No IPv6' | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  netsh advfirewall firewall add rule name='Ply No IPv6' dir=out action=block remoteip='::/0' | Out-Null
 }
 
 route delete 0.0.0.0 mask 128.0.0.0 | Out-Null
@@ -251,6 +282,7 @@ if ($null -ne $state.smart) {
 Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment -eq 'Ply' } | ForEach-Object {
   Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue
 }
+netsh advfirewall firewall delete rule name='Ply No IPv6' | Out-Null
 Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
 ipconfig /flushdns | Out-Null
 Write-Output 'OK'
@@ -310,6 +342,7 @@ if (Get-VpnConnection -Name 'Ply' -AllUserConnection -ErrorAction SilentlyContin
 if (Get-VpnConnection -Name 'Ply' -ErrorAction SilentlyContinue) { $hit = $true }
 Remove-VpnConnection -Name 'Ply' -Force -AllUserConnection -ErrorAction SilentlyContinue
 Remove-VpnConnection -Name 'Ply' -Force -ErrorAction SilentlyContinue
+netsh advfirewall firewall delete rule name='Ply No IPv6' | Out-Null
 if ($hit) { 'REMOVED' } else { 'ABSENT' }
 `
 	out, _ := runPS(script, nil)

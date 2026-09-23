@@ -192,6 +192,9 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	if ip := net.ParseIP(n.dialAddr()); ip != nil {
 		rules = append(rules, map[string]any{"type": "field", "ip": []string{ip.String()}, "outboundTag": "direct"})
 	}
+	// Пул FakeDNS. geoip:private его тоже считает «своим» — без этого правила
+	// несработавший снифф утащит 198.18 мимо туннеля.
+	rules = append(rules, map[string]any{"type": "field", "ip": []string{"198.18.0.0/16"}, "outboundTag": "proxy"})
 	rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"})
 	// Только из tun/socks. Иначе запрос самого DNS-модуля снова попадёт в dns-out.
 	rules = append(rules, map[string]any{
@@ -205,12 +208,9 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	}
 	rules = append(rules, map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"})
 
-	// DoH через туннель, хост — IP, так что для самого запроса DNS не нужен и петли нет.
-	// UDP/53 наружу не шлём: его режут и он раздут для hy2.
-	foreignDNS := map[string]any{
-		"address": "https://1.1.1.1/dns-query",
-		"detour":  "proxy",
-	}
+	// РФ — живой DNS напрямую, без отката на фейк.
+	// Остальные имена — адрес из 198.18/16. Провайдерский «русский» IP на grok
+	// и прочие ИИ больше не решает маршрут: в туннель уходит имя.
 	var dnsServers []any
 	if split {
 		dnsServers = []any{
@@ -220,10 +220,10 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 				"skipFallback": true,
 				"detour":       "direct",
 			},
-			foreignDNS,
+			"fakedns",
 		}
 	} else {
-		dnsServers = []any{foreignDNS}
+		dnsServers = []any{"fakedns"}
 	}
 	dns := map[string]any{
 		"servers":       dnsServers,
@@ -233,6 +233,10 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"dns": dns,
+		"fakedns": map[string]any{
+			"ipPool":   "198.18.0.0/16",
+			"poolSize": 65535,
+		},
 		"policy": map[string]any{
 			"levels": map[string]any{
 				"0": map[string]any{"bufferSize": 1024, "connIdle": 300},
@@ -243,14 +247,14 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 				"tag":      "tun",
 				"protocol": "tun",
 				"settings": tunSettings(tunFD, mtu),
-				"sniffing": sniffing(split),
+				"sniffing": sniffing(),
 			},
 			map[string]any{
 				"tag":      "socks",
 				"port":     port,
 				"listen":   "127.0.0.1",
 				"protocol": "mixed",
-				"sniffing": sniffing(split),
+				"sniffing": sniffing(),
 				"settings": map[string]any{"auth": "noauth", "udp": true},
 			},
 		},
@@ -271,15 +275,12 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
-func sniffing(split bool) map[string]any {
-	// Без сплита разбор не нужен: он держит первые пакеты Telegram и ломает QUIC.
-	if !split {
-		return map[string]any{"enabled": false}
-	}
+func sniffing() map[string]any {
+	// routeOnly не ставим: фейковый (и отравленный) IP должен смениться на имя,
+	// иначе сервер звонит в заглушку. quic не сниффим — ломает HTTP/3.
 	return map[string]any{
 		"enabled":      true,
-		"destOverride": []string{"http", "tls"},
-		"routeOnly":    true,
+		"destOverride": []string{"fakedns", "http", "tls"},
 	}
 }
 
@@ -296,9 +297,10 @@ func tunSettings(fd, mtu int) map[string]any {
 		s["fd"] = fd
 		return s
 	}
-	s["gateway"] = []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
+	s["gateway"] = []string{"198.18.0.1/16"}
 	s["dns"] = []string{"1.1.1.1"}
-	s["autoSystemRoutingTable"] = []string{"0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"}
+	// IPv6 в туннель не кладём: у узла его часто нет, AAAA у ИИ зависают.
+	s["autoSystemRoutingTable"] = []string{"0.0.0.0/1", "128.0.0.0/1"}
 	s["autoOutboundsInterface"] = "auto"
 	return s
 }

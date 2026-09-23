@@ -238,12 +238,15 @@ func TestRenderXrayHasTUN(t *testing.T) {
 		t.Fatal("tun mtu should be 1400")
 	}
 	if strings.Contains(s, "routeOnly") || strings.Contains(s, "quic") || strings.Contains(s, "tcpMaxSeg") {
-		t.Fatal("full tunnel must not sniff or clamp the server socket")
+		t.Fatal("full tunnel must not keep the poisoned IP, sniff quic, or clamp the server socket")
 	}
-	for _, need := range []string{`"dns-out"`, "dns-query", `"::/1"`, `"8000::/1"`} {
+	for _, need := range []string{`"dns-out"`, `"fakedns"`, "198.18.0.0/16", "198.18.0.1/16"} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("config missing %s", need)
 		}
+	}
+	if strings.Contains(s, "dns-query") || strings.Contains(s, `"::/1"`) || strings.Contains(s, "fdfe:dcba") {
+		t.Fatal("no DoH and no IPv6 inside the tun")
 	}
 	if strings.Contains(s, "IPIfNonMatch") {
 		t.Fatal("IPIfNonMatch is slow, want AsIs")
@@ -277,17 +280,18 @@ func TestRenderXraySplitRussia(t *testing.T) {
 		"AsIs",
 		"77.88.8.8",
 		"domain:vk.com",
-		"routeOnly",
+		"fakedns",
+		"198.18.0.0/16",
 	} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("split config missing %s", need)
 		}
 	}
-	if strings.Contains(s, "IPIfNonMatch") || strings.Contains(s, "quic") {
-		t.Fatal("split should not use IPIfNonMatch or quic sniff")
+	if strings.Contains(s, "IPIfNonMatch") || strings.Contains(s, "quic") || strings.Contains(s, "routeOnly") || strings.Contains(s, "dns-query") {
+		t.Fatal("split should not use IPIfNonMatch, quic sniff, routeOnly or DoH")
 	}
-	if !strings.Contains(s, "dns-query") || !strings.Contains(s, `"dns-out"`) {
-		t.Fatal("foreign DNS should be DoH via dns-out")
+	if !strings.Contains(s, `"dns-out"`) {
+		t.Fatal("tun DNS should hit dns-out")
 	}
 }
 
