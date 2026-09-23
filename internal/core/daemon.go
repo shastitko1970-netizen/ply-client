@@ -472,12 +472,6 @@ func StartDaemon() error {
 	daemonMu.Unlock()
 	go func() { _ = srv.Serve(ln) }()
 	go func() {
-		time.Sleep(1500 * time.Millisecond)
-		if RemoveVpnProfile() {
-			TrayBalloon("Ply", "Убрала «Ply» из списка VPN Windows. Он был пустой — отсюда «неверные данные аккаунта». Включай из значка у часов.")
-		}
-	}()
-	go func() {
 		time.Sleep(1200 * time.Millisecond)
 		daemonCheckUpdate(false)
 	}()

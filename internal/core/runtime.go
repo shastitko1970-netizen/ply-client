@@ -393,7 +393,6 @@ func Connect(source string) (*Session, error) {
 			return nil, fmt.Errorf("адаптер есть, но дефолтный маршрут всё ещё Wi‑Fi — туннель не ест Windows")
 		}
 		_ = SetWinProxy("", false)
-		go RegisterVpnProfile(lastServerIP)
 	} else if msg := tunFailed(tailLog(20)); msg != "" {
 		StopXray()
 		return nil, fmt.Errorf("туннель: %s", msg)

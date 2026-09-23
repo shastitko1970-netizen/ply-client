@@ -237,8 +237,17 @@ func TestRenderXrayHasTUN(t *testing.T) {
 	if !strings.Contains(s, `"mtu": 1400`) {
 		t.Fatal("tun mtu should be 1400")
 	}
+	if !strings.Contains(s, `"quic"`) {
+		t.Fatal("sniffing should see quic, otherwise HTTP/3 AI dies")
+	}
 	if !strings.Contains(s, `"routeOnly": true`) {
 		t.Fatal("sniffing should be routeOnly")
+	}
+	if strings.Contains(s, "blackhole") || strings.Contains(s, `"network": "udp"`) {
+		t.Fatal("udp/443 must stay open")
+	}
+	if !strings.Contains(s, `"detour": "proxy"`) {
+		t.Fatal("foreign DNS should resolve through the tunnel")
 	}
 	if !strings.Contains(s, `"tcpMaxSeg": 1360`) {
 		t.Fatal("tcpMaxSeg missing")

@@ -99,9 +99,18 @@ func runPS(script string, env []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, "net.ps1")
+	f, err := os.CreateTemp(dir, "net-*.ps1")
+	if err != nil {
+		return "", err
+	}
+	path := f.Name()
+	defer os.Remove(path)
 	body := append([]byte{0xEF, 0xBB, 0xBF}, []byte(script)...)
-	if err := os.WriteFile(path, body, 0644); err != nil {
+	if _, err := f.Write(body); err != nil {
+		_ = f.Close()
+		return "", err
+	}
+	if err := f.Close(); err != nil {
 		return "", err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -138,7 +147,16 @@ if (-not (Test-Path -LiteralPath $stateFile)) {
     $cfg = Get-DnsClientServerAddress -InterfaceIndex $d.IfIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
     $dns += @{ IfIndex = $d.IfIndex; Servers = @($cfg.ServerAddresses) }
   }
-  $obj = @{ defaults = $defs; metrics = $metrics; dns = $dns; serverIP = $serverIP; plyIf = $idx }
+  $v6 = @(Get-NetRoute -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceIndex -ne $idx } | ForEach-Object {
+    @{ IfIndex = $_.InterfaceIndex; NextHop = [string]$_.NextHop; Metric = [int]$_.RouteMetric }
+  })
+  $smart = -1
+  $pol0 = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+  if (Test-Path $pol0) {
+    $cur0 = Get-ItemProperty -Path $pol0 -Name DisableSmartNameResolution -ErrorAction SilentlyContinue
+    if ($null -ne $cur0 -and $null -ne $cur0.DisableSmartNameResolution) { $smart = [int]$cur0.DisableSmartNameResolution }
+  }
+  $obj = @{ defaults = $defs; metrics = $metrics; dns = $dns; serverIP = $serverIP; plyIf = $idx; v6 = $v6; smart = $smart }
   ($obj | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
 }
 
@@ -178,6 +196,29 @@ if ($serverIP -and $primary -and $primary.NextHop) {
   }
 }
 
+$names = @($state.PSObject.Properties.Name)
+if ($names -notcontains 'v6') {
+  $v6now = @(Get-NetRoute -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceIndex -ne $idx } | ForEach-Object {
+    @{ IfIndex = $_.InterfaceIndex; NextHop = [string]$_.NextHop; Metric = [int]$_.RouteMetric }
+  })
+  $state | Add-Member -NotePropertyName v6 -NotePropertyValue $v6now -Force
+  ($state | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
+}
+Get-NetRoute -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceIndex -ne $idx } | Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
+
+Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment -eq 'Ply' } | ForEach-Object {
+  Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue
+}
+if ($env:PLY_SPLIT -eq '1') {
+  foreach ($ns in @('.ru','.su','.xn--p1ai','.yandex.ru','.yandex.com','.yandex.net','.ya.ru','.vk.com','.userapi.com','.vk-cdn.net','.vkuser.net','.mail.ru')) {
+    Add-DnsClientNrptRule -Namespace $ns -NameServers '77.88.8.8' -Comment 'Ply' -ErrorAction SilentlyContinue | Out-Null
+  }
+}
+Add-DnsClientNrptRule -Namespace '.' -NameServers @('1.1.1.1','8.8.8.8') -Comment 'Ply' -ErrorAction SilentlyContinue | Out-Null
+$pol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+if (-not (Test-Path $pol)) { New-Item -Path $pol -Force | Out-Null }
+New-ItemProperty -Path $pol -Name DisableSmartNameResolution -Value 1 -PropertyType DWord -Force | Out-Null
+
 route delete 0.0.0.0 mask 128.0.0.0 | Out-Null
 route delete 128.0.0.0 mask 128.0.0.0 | Out-Null
 route add 0.0.0.0 mask 128.0.0.0 198.18.0.1 metric 1 if $idx | Out-Null
@@ -214,6 +255,28 @@ if ($state.dns) {
     }
   }
 }
+if ($state.v6) {
+  foreach ($r in @($state.v6)) {
+    $hop = [string]$r.NextHop
+    if ($hop -and $hop -ne '::' -and $hop -ne '0.0.0.0') {
+      New-NetRoute -DestinationPrefix '::/0' -InterfaceIndex ([int]$r.IfIndex) -NextHop $hop -RouteMetric ([int]$r.Metric) -ErrorAction SilentlyContinue | Out-Null
+    } else {
+      New-NetRoute -DestinationPrefix '::/0' -InterfaceIndex ([int]$r.IfIndex) -RouteMetric ([int]$r.Metric) -ErrorAction SilentlyContinue | Out-Null
+    }
+  }
+}
+$pol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+if ($null -ne $state.smart) {
+  if ([int]$state.smart -lt 0) {
+    Remove-ItemProperty -Path $pol -Name DisableSmartNameResolution -ErrorAction SilentlyContinue
+  } else {
+    if (-not (Test-Path $pol)) { New-Item -Path $pol -Force | Out-Null }
+    New-ItemProperty -Path $pol -Name DisableSmartNameResolution -Value ([int]$state.smart) -PropertyType DWord -Force | Out-Null
+  }
+}
+Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment -eq 'Ply' } | ForEach-Object {
+  Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue
+}
 Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
 ipconfig /flushdns | Out-Null
 Write-Output 'OK'
@@ -226,9 +289,14 @@ func ApplyTunRoutes(serverIP string) error {
 	if st == "" {
 		return fmt.Errorf("нет папки данных")
 	}
+	split := "0"
+	if ReadSplit() {
+		split = "1"
+	}
 	out, err := runPS(applyTunPS, []string{
 		"PLY_STATE=" + st,
 		"PLY_SERVER=" + strings.TrimSpace(serverIP),
+		"PLY_SPLIT=" + split,
 	})
 	if err != nil {
 		return fmt.Errorf("маршруты: %s (%v)", out, err)
@@ -253,14 +321,14 @@ func RestoreTunRoutes() {
 }
 
 func RegisterVpnProfile(serverIP string) {
-	// Не Add-VpnConnection. Пустой RAS с PAP Windows набирает из своего
-	// меню VPN и пишет «неверные данные учётной записи». Туннель — Xray
-	// и wintun, не системный VPN. Профиль только сносим.
+	// Пустой RAS больше не создаём. И не сносим его здесь: Remove-VpnConnection
+	// в момент включения сбрасывает маршруты, xray гаснет сразу после старта.
 	_ = serverIP
-	RemoveVpnProfile()
 }
 
 func RemoveVpnProfile() bool {
+	routeMu.Lock()
+	defer routeMu.Unlock()
 	script := `
 $ErrorActionPreference = 'SilentlyContinue'
 $hit = $false

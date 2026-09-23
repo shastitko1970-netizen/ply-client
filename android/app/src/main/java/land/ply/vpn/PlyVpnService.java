@@ -126,7 +126,7 @@ public class PlyVpnService extends VpnService {
             "  \"inbounds\": [{\n" +
             "    \"tag\": \"tun\", \"protocol\": \"tun\",\n" +
             "    \"settings\": {\"mtu\": 1400, \"fd\": " + fd + "},\n" +
-            "    \"sniffing\": {\"enabled\": true, \"destOverride\": [\"http\", \"tls\"], \"routeOnly\": true}\n" +
+            "    \"sniffing\": {\"enabled\": true, \"destOverride\": [\"http\", \"tls\", \"quic\"], \"routeOnly\": true}\n" +
             "  }],\n" +
             "  \"outbounds\": [{\"tag\": \"direct\", \"protocol\": \"freedom\"}]\n" +
             "}\n";

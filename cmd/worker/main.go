@@ -16,8 +16,12 @@ func main() {
 		os.Exit(1)
 	}
 	go func() {
-		time.Sleep(400 * time.Millisecond)
+		removed := core.RemoveVpnProfile()
 		core.BootSaved()
+		if removed {
+			time.Sleep(800 * time.Millisecond)
+			core.TrayBalloon("Ply", "Убрала «Ply» из списка VPN Windows. Он был пустой — отсюда «неверные данные аккаунта». Включай из значка у часов.")
+		}
 	}()
 	core.RunHost(core.TrayHooks{
 		OnShow: func() {

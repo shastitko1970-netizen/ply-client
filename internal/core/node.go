@@ -164,13 +164,13 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 			map[string]any{"type": "field", "ip": RussiaDirectIPs(), "outboundTag": "direct"},
 		)
 	}
-	rules = append(rules,
-		map[string]any{"type": "field", "network": "udp", "port": "443", "outboundTag": "block"},
-		map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"},
-	)
+	rules = append(rules, map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"})
 
+	// QUIC не в чёрную дыру: ChatGPT, Claude, Gemini, Grok сидят на HTTP/3 (udp/443).
+	// Сплит .ru для HTTP/3 держится на sniff quic, а не на бане порта.
+	foreignDNS := map[string]any{"address": "1.1.1.1", "detour": "proxy"}
 	dns := map[string]any{
-		"servers":       []any{"1.1.1.1", "8.8.8.8"},
+		"servers":       []any{foreignDNS, "8.8.8.8"},
 		"queryStrategy": "UseIPv4",
 	}
 	if split {
@@ -180,8 +180,9 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 					"address":      "77.88.8.8",
 					"domains":      RussiaDirectDomains(),
 					"skipFallback": true,
+					"detour":       "direct",
 				},
-				"1.1.1.1",
+				foreignDNS,
 				"8.8.8.8",
 			},
 			"queryStrategy": "UseIPv4",
@@ -203,7 +204,7 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 				"settings": tunSettings(tunFD, mtu),
 				"sniffing": map[string]any{
 					"enabled":      true,
-					"destOverride": []string{"http", "tls"},
+					"destOverride": []string{"http", "tls", "quic"},
 					"routeOnly":    true,
 				},
 			},
@@ -214,7 +215,7 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 				"protocol": "mixed",
 				"sniffing": map[string]any{
 					"enabled":      true,
-					"destOverride": []string{"http", "tls"},
+					"destOverride": []string{"http", "tls", "quic"},
 					"routeOnly":    true,
 				},
 				"settings": map[string]any{"auth": "noauth", "udp": true},
@@ -227,7 +228,6 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 				"protocol": "freedom",
 				"settings": map[string]any{"domainStrategy": "UseIPv4"},
 			},
-			map[string]any{"tag": "block", "protocol": "blackhole"},
 		},
 		"routing": map[string]any{
 			"domainStrategy": "AsIs",
