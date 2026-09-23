@@ -4,18 +4,19 @@ VPN-клиент. Вставила ключ — туннель встал.
 
 Ключи: **vless://**, **hy2://**, **vmess://**, **trojan://**, **ss://** и https-подписка. Один слой, mux выключен. Сайты РФ можно пустить напрямую. В памяти одно ядро — Xray. Второе не качаем и не держим рядом.
 
-## Скачать 2.0.4
+## Скачать 2.0.5
 
-Один релиз, все платформы: [github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.4](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.4)
+Один релиз, все платформы: [github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.5](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.5)
 
-- Windows: **Ply-2.0.4-win64.zip** → PlySetup.exe. Go качать не надо.
-- Linux: **Ply-2.0.4-linux-amd64.tar.gz** → `./install.sh` (Chromium и права на туннель сам).
-- macOS: **Ply-2.0.4-macos.zip** → `install.command`, нужен Chrome или Edge.
-- Android: **Ply-2.0.4.apk**
+- Windows: **Ply-2.0.5-win64.zip** → PlySetup.exe. Go качать не надо.
+- Linux: **Ply-2.0.5-linux-amd64.tar.gz** → `./install.sh` (Chromium и права на туннель сам).
+- macOS: **Ply-2.0.5-macos.zip** → `install.command`, нужен Chrome или Edge.
+- Android: **Ply-2.0.5.apk**
 
 ## Что нового
 
-- 2.0.4: Grok и другие ИИ больше не упираются в «русский» адрес от провайдера. Чужое имя уходит в туннель, .ru по-прежнему напрямую. IPv6 в туннель не тащим.
+- 2.0.5: сайты, которые в 2.0.4 открывались с трудом, идут сразу на обычный адрес. Имя на сервере заново не ищется, IPv6 не висит в таймауте.
+- 2.0.4: Grok и другие ИИ больше не упираются в «русский» адрес от провайдера. .ru по-прежнему напрямую.
 - 2.0.3: тот же ключ больше не должен быть медленнее чужих клиентов. DNS чужих сайтов — DoH через туннель, QUIC и Telegram не разбираем, hy2 с меньшим MTU, включение не ждёт проверку IP.
 - 2.0.2: ядро не гаснет при включении.
 - 2.0.1: пункт «Ply» больше не появляется в списке VPN Windows. Он был пустым RAS, и система писала «неверные данные аккаунта». Включай из окна или из значка у часов — «Включить VPN».

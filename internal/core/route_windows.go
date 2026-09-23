@@ -140,6 +140,17 @@ function Get-PlySmart {
   if ($null -eq $v) { return -1 }
   return [int]$v
 }
+function Get-PlyV4Prec {
+  $raw = netsh interface ipv6 show prefixpolicies | Out-String
+  foreach ($line in ([regex]::Split($raw, '\r?\n'))) {
+    if ($line -like '*::ffff:0:0/96*') {
+      $parts = @($line.Trim() -split '\s+')
+      $n = 0
+      if ([int]::TryParse($parts[0], [ref]$n)) { return $n }
+    }
+  }
+  return 35
+}
 
 $ply = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and ($_.InterfaceDescription -match 'Ply' -or $_.Name -match 'Ply') } | Select-Object -First 1
 if (-not $ply) { Write-Output 'NO_PLY'; exit 3 }
@@ -158,7 +169,8 @@ if (-not (Test-Path -LiteralPath $stateFile)) {
     $dns += @{ IfIndex = $d.IfIndex; Servers = @($cfg.ServerAddresses) }
   }
   $smartNow = Get-PlySmart
-  $obj = @{ defaults = $defs; metrics = $metrics; dns = $dns; serverIP = $serverIP; plyIf = $idx; smart = $smartNow }
+  $v4precNow = Get-PlyV4Prec
+  $obj = @{ defaults = $defs; metrics = $metrics; dns = $dns; serverIP = $serverIP; plyIf = $idx; smart = $smartNow; v4prec = $v4precNow }
   ($obj | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
 }
 
@@ -198,8 +210,22 @@ if ($serverIP -and $primary -and $primary.NextHop) {
   }
 }
 
+$stateDirty = $false
 if ($null -eq $state.PSObject.Properties['smart']) {
   $state | Add-Member -NotePropertyName 'smart' -NotePropertyValue (Get-PlySmart) -Force
+  $stateDirty = $true
+}
+if ($null -eq $state.PSObject.Properties['v4prec']) {
+  $state | Add-Member -NotePropertyName 'v4prec' -NotePropertyValue (Get-PlyV4Prec) -Force
+  $stateDirty = $true
+}
+$restartDns = $false
+if ($null -eq $state.PSObject.Properties['dnsHot']) {
+  $restartDns = $true
+  $state | Add-Member -NotePropertyName 'dnsHot' -NotePropertyValue $true -Force
+  $stateDirty = $true
+}
+if ($stateDirty) {
   ($state | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
 }
 
@@ -217,16 +243,26 @@ if ($good.Count -eq 0) {
 
 Remove-NetRoute -DestinationPrefix '::/1' -Confirm:$false -ErrorAction SilentlyContinue
 Remove-NetRoute -DestinationPrefix '8000::/1' -Confirm:$false -ErrorAction SilentlyContinue
-netsh advfirewall firewall show rule name='Ply No IPv6' | Out-Null
-if ($LASTEXITCODE -ne 0) {
-  netsh advfirewall firewall add rule name='Ply No IPv6' dir=out action=block remoteip='::/0' | Out-Null
-}
+netsh advfirewall firewall delete rule name='Ply No IPv6' | Out-Null
+netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 100 4 | Out-Null
+try {
+  $lo = Get-NetIPInterface -AddressFamily IPv6 | Where-Object { $_.InterfaceAlias -match 'Loopback' } | Select-Object -First 1
+  if ($lo) {
+    $hasLo = Get-NetRoute -DestinationPrefix '::/0' -InterfaceIndex ([int]$lo.InterfaceIndex) -PolicyStore ActiveStore -ErrorAction SilentlyContinue
+    if (-not $hasLo) {
+      New-NetRoute -DestinationPrefix '::/0' -InterfaceIndex ([int]$lo.InterfaceIndex) -NextHop '::' -RouteMetric 1 -PolicyStore ActiveStore -ErrorAction Stop | Out-Null
+    }
+  }
+} catch {}
 
 route delete 0.0.0.0 mask 128.0.0.0 | Out-Null
 route delete 128.0.0.0 mask 128.0.0.0 | Out-Null
 route add 0.0.0.0 mask 128.0.0.0 198.18.0.1 metric 1 if $idx | Out-Null
 route add 128.0.0.0 mask 128.0.0.0 198.18.0.1 metric 1 if $idx | Out-Null
 
+if ($restartDns) {
+  try { Restart-Service Dnscache -Force -ErrorAction Stop } catch {}
+}
 ipconfig /flushdns | Out-Null
 Write-Output 'OK'
 `
@@ -283,7 +319,16 @@ Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment 
   Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue
 }
 netsh advfirewall firewall delete rule name='Ply No IPv6' | Out-Null
+$back = 35
+if ($null -ne $state.v4prec) { $back = [int]$state.v4prec }
+netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 $back 4 | Out-Null
+try {
+  Get-NetRoute -DestinationPrefix '::/0' -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -match 'Loopback' } | ForEach-Object {
+    Remove-NetRoute -DestinationPrefix '::/0' -InterfaceIndex $_.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+  }
+} catch {}
 Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
+try { Restart-Service Dnscache -Force -ErrorAction Stop } catch {}
 ipconfig /flushdns | Out-Null
 Write-Output 'OK'
 `
@@ -343,6 +388,11 @@ if (Get-VpnConnection -Name 'Ply' -ErrorAction SilentlyContinue) { $hit = $true 
 Remove-VpnConnection -Name 'Ply' -Force -AllUserConnection -ErrorAction SilentlyContinue
 Remove-VpnConnection -Name 'Ply' -Force -ErrorAction SilentlyContinue
 netsh advfirewall firewall delete rule name='Ply No IPv6' | Out-Null
+try {
+  Get-NetRoute -DestinationPrefix '::/0' -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -match 'Loopback' } | ForEach-Object {
+    Remove-NetRoute -DestinationPrefix '::/0' -InterfaceIndex $_.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+  }
+} catch {}
 if ($hit) { 'REMOVED' } else { 'ABSENT' }
 `
 	out, _ := runPS(script, nil)
