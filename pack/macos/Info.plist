@@ -5,8 +5,8 @@
   <key>CFBundleName</key><string>Ply</string>
   <key>CFBundleDisplayName</key><string>Ply</string>
   <key>CFBundleIdentifier</key><string>land.ply.vpn</string>
-  <key>CFBundleVersion</key><string>2.0.6</string>
-  <key>CFBundleShortVersionString</key><string>2.0.6</string>
+  <key>CFBundleVersion</key><string>2.0.7</string>
+  <key>CFBundleShortVersionString</key><string>2.0.7</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>Ply</string>
   <key>CFBundleIconFile</key><string>icon</string>

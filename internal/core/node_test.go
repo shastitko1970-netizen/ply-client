@@ -237,10 +237,10 @@ func TestRenderXrayHasTUN(t *testing.T) {
 	if !strings.Contains(s, `"mtu": 1400`) {
 		t.Fatal("tun mtu should be 1400")
 	}
-	if strings.Contains(s, "routeOnly") || strings.Contains(s, "quic") || strings.Contains(s, "tcpMaxSeg") || strings.Contains(s, "dns-query") {
-		t.Fatal("full tunnel must not sniff quic, clamp the socket, or use DoH")
+	if strings.Contains(s, "quic") || strings.Contains(s, "tcpMaxSeg") || strings.Contains(s, "dns-query") || strings.Contains(s, `"metadataOnly": true`) || strings.Contains(s, `"routeOnly": true`) {
+		t.Fatal("full tunnel must not sniff quic, clamp the socket, use DoH, or keep the raw IP")
 	}
-	for _, need := range []string{`"dns-out"`, `"fakedns"`, `"metadataOnly": true`, "198.18.0.0/16", "198.18.0.1/16"} {
+	for _, need := range []string{`"dns-out"`, `"fakedns"`, `"http"`, `"tls"`, `"metadataOnly": false`, `"routeOnly": false`, "198.18.0.0/16", "198.18.0.1/16"} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("config missing %s", need)
 		}
@@ -281,15 +281,17 @@ func TestRenderXraySplitRussia(t *testing.T) {
 		"77.88.8.8",
 		"domain:vk.com",
 		"fakedns",
-		"metadataOnly",
+		`"http"`,
+		`"metadataOnly": false`,
+		`"routeOnly": false`,
 		"198.18.0.1/16",
 	} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("split config missing %s", need)
 		}
 	}
-	if strings.Contains(s, "IPIfNonMatch") || strings.Contains(s, "quic") || strings.Contains(s, "routeOnly") || strings.Contains(s, "dns-query") {
-		t.Fatal("split should not use IPIfNonMatch, quic sniff, routeOnly or DoH")
+	if strings.Contains(s, "IPIfNonMatch") || strings.Contains(s, "quic") || strings.Contains(s, "dns-query") || strings.Contains(s, `"routeOnly": true`) || strings.Contains(s, `"metadataOnly": true`) {
+		t.Fatal("split should not use IPIfNonMatch, quic sniff, DoH, or keep the raw IP")
 	}
 	if !strings.Contains(s, `"dns-out"`) {
 		t.Fatal("tun DNS should hit dns-out")

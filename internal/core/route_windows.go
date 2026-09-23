@@ -244,6 +244,7 @@ if ($good.Count -eq 0) {
 Remove-NetRoute -DestinationPrefix '::/1' -Confirm:$false -ErrorAction SilentlyContinue
 Remove-NetRoute -DestinationPrefix '8000::/1' -Confirm:$false -ErrorAction SilentlyContinue
 netsh advfirewall firewall delete rule name='Ply No IPv6' | Out-Null
+netsh advfirewall firewall add rule name='Ply No IPv6' dir=out action=block remoteip='::/0' | Out-Null
 netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 100 4 | Out-Null
 try {
   Get-NetRoute -DestinationPrefix '::/0' -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -match 'Loopback' } | ForEach-Object {

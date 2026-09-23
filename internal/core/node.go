@@ -207,8 +207,8 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	}
 	rules = append(rules, map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"})
 
-	// РФ — живой DNS напрямую. Остальное — фейковый адрес: в туннель уходит имя,
-	// а не «русский» IP провайдера. Пакеты не разбираем, соединение не ждёт ClientHello.
+	// РФ — живой DNS напрямую. Остальное — фейковый адрес, а если браузер
+	// всё же взял чужой IP, имя забираем из самого запроса.
 	var dnsServers []any
 	if split {
 		dnsServers = []any{
@@ -274,12 +274,14 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 }
 
 func sniffing() map[string]any {
-	// Только карта фейкового IP → имя, без чтения пакетов. QUIC не трогаем.
-	// routeOnly нельзя: серверу нужно имя, иначе он звонит в заглушку провайдера.
+	// 2.0.6 с одним fakedns имя не возвращал, и сайт снова шёл на заглушку.
+	// http+tls возвращают имя из запроса. routeOnly выключен: на сервер уходит имя, не IP.
+	// quic не сниффим. metadataOnly нельзя: тогда http и tls не включаются.
 	return map[string]any{
 		"enabled":      true,
-		"destOverride": []string{"fakedns"},
-		"metadataOnly": true,
+		"destOverride": []string{"fakedns", "http", "tls"},
+		"metadataOnly": false,
+		"routeOnly":    false,
 	}
 }
 
