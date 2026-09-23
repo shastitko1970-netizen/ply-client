@@ -36,6 +36,7 @@ const (
 	cmdShow     = 1001
 	cmdOff      = 1002
 	cmdQuit     = 1003
+	cmdOn       = 1004
 )
 
 type notifyIconData struct {
@@ -58,6 +59,7 @@ type notifyIconData struct {
 
 type TrayHooks struct {
 	OnShow       func()
+	OnConnect    func()
 	OnDisconnect func()
 	OnQuit       func()
 	Invalidate   func()
@@ -247,6 +249,10 @@ func traySubclass(hwnd, msg, wparam, lparam uintptr) uintptr {
 		switch wparam & 0xffff {
 		case cmdShow:
 			ShowFromTray()
+		case cmdOn:
+			if trayHooks.OnConnect != nil {
+				trayHooks.OnConnect()
+			}
 		case cmdOff:
 			if trayHooks.OnDisconnect != nil {
 				trayHooks.OnDisconnect()
@@ -272,8 +278,9 @@ func showTrayMenu(hwnd windows.HWND) {
 		return
 	}
 	defer procDestroyMenu.Call(m)
-	appendMenu(m, cmdShow, "Открыть Ply")
+	appendMenu(m, cmdOn, "Включить VPN")
 	appendMenu(m, cmdOff, "Выключить VPN")
+	appendMenu(m, cmdShow, "Открыть Ply")
 	appendMenu(m, cmdQuit, "Выйти и погасить туннель")
 	var pt point
 	_, _, _ = procGetCursor.Call(uintptr(unsafe.Pointer(&pt)))

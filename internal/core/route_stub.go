@@ -13,4 +13,4 @@ func RestoreTunRoutes() {}
 
 func RegisterVpnProfile(serverIP string) { _ = serverIP }
 
-func RemoveVpnProfile() {}
+func RemoveVpnProfile() bool { return false }

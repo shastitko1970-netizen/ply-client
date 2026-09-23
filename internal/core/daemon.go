@@ -20,23 +20,23 @@ import (
 )
 
 type Snapshot struct {
-	Version  string  `json:"version"`
-	Platform string  `json:"platform"`
-	Admin    bool    `json:"admin"`
-	Live    bool    `json:"live"`
-	Busy    bool    `json:"busy"`
-	Status  string  `json:"status"`
-	Error   string  `json:"error"`
-	Detail  string  `json:"detail"`
-	ExitIP  string  `json:"exitIP"`
-	URL     string  `json:"url"`
-	Split   bool    `json:"split"`
-	Auto    bool    `json:"auto"`
-	Prefs   Prefs   `json:"prefs"`
-	Cores   []CoreSlot `json:"cores,omitempty"`
-	Node    *Node   `json:"node,omitempty"`
-	Update  *Update `json:"update,omitempty"`
-	UpdNote string  `json:"updNote,omitempty"`
+	Version  string     `json:"version"`
+	Platform string     `json:"platform"`
+	Admin    bool       `json:"admin"`
+	Live     bool       `json:"live"`
+	Busy     bool       `json:"busy"`
+	Status   string     `json:"status"`
+	Error    string     `json:"error"`
+	Detail   string     `json:"detail"`
+	ExitIP   string     `json:"exitIP"`
+	URL      string     `json:"url"`
+	Split    bool       `json:"split"`
+	Auto     bool       `json:"auto"`
+	Prefs    Prefs      `json:"prefs"`
+	Cores    []CoreSlot `json:"cores,omitempty"`
+	Node     *Node      `json:"node,omitempty"`
+	Update   *Update    `json:"update,omitempty"`
+	UpdNote  string     `json:"updNote,omitempty"`
 }
 
 type coreFile struct {
@@ -310,6 +310,27 @@ func EngineDisconnect() {
 	})
 }
 
+func EngineConnectSaved() {
+	u := strings.TrimSpace(ReadURL())
+	if u == "" {
+		TrayBalloon("Ply", "Ключа нет. Открываю окно — вставь ссылку.")
+		_ = LaunchUI()
+		return
+	}
+	daemonMu.Lock()
+	live := daemonSnap.Live
+	busy := daemonSnap.Busy
+	daemonMu.Unlock()
+	if busy {
+		return
+	}
+	if live {
+		TrayBalloon("Ply", "Туннель уже включён.")
+		return
+	}
+	daemonConnect(u, false)
+}
+
 func BootSaved() {
 	if !LoadPrefs().Auto {
 		return
@@ -450,6 +471,12 @@ func StartDaemon() error {
 	}
 	daemonMu.Unlock()
 	go func() { _ = srv.Serve(ln) }()
+	go func() {
+		time.Sleep(1500 * time.Millisecond)
+		if RemoveVpnProfile() {
+			TrayBalloon("Ply", "Убрала «Ply» из списка VPN Windows. Он был пустой — отсюда «неверные данные аккаунта». Включай из значка у часов.")
+		}
+	}()
 	go func() {
 		time.Sleep(1200 * time.Millisecond)
 		daemonCheckUpdate(false)

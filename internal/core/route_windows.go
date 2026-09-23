@@ -253,36 +253,25 @@ func RestoreTunRoutes() {
 }
 
 func RegisterVpnProfile(serverIP string) {
-	if strings.TrimSpace(serverIP) == "" {
-		serverIP = "198.18.0.1"
-	}
-	script := `
-$ErrorActionPreference = 'SilentlyContinue'
-$server = $env:PLY_SERVER
-$existing = Get-VpnConnection -Name 'Ply' -AllUserConnection -ErrorAction SilentlyContinue
-if (-not $existing) { $existing = Get-VpnConnection -Name 'Ply' -ErrorAction SilentlyContinue }
-if ($existing) {
-  Set-VpnConnection -Name 'Ply' -ServerAddress $server -SplitTunneling $true -ErrorAction SilentlyContinue
-  Set-VpnConnection -Name 'Ply' -ServerAddress $server -SplitTunneling $true -AllUserConnection -ErrorAction SilentlyContinue
-} else {
-  Add-VpnConnection -Name 'Ply' -ServerAddress $server -TunnelType Automatic -EncryptionLevel Optional -AuthenticationMethod PAP -SplitTunneling $true -AllUserConnection -Force -RememberCredential:$false -ErrorAction SilentlyContinue | Out-Null
-  if (-not (Get-VpnConnection -Name 'Ply' -AllUserConnection -ErrorAction SilentlyContinue) -and -not (Get-VpnConnection -Name 'Ply' -ErrorAction SilentlyContinue)) {
-    Add-VpnConnection -Name 'Ply' -ServerAddress $server -TunnelType Automatic -SplitTunneling $true -Force -ErrorAction SilentlyContinue | Out-Null
-  }
-}
-Write-Output 'OK'
-`
-	_, _ = runPS(script, []string{"PLY_SERVER=" + serverIP})
+	// Не Add-VpnConnection. Пустой RAS с PAP Windows набирает из своего
+	// меню VPN и пишет «неверные данные учётной записи». Туннель — Xray
+	// и wintun, не системный VPN. Профиль только сносим.
+	_ = serverIP
+	RemoveVpnProfile()
 }
 
-func RemoveVpnProfile() {
+func RemoveVpnProfile() bool {
 	script := `
 $ErrorActionPreference = 'SilentlyContinue'
+$hit = $false
+if (Get-VpnConnection -Name 'Ply' -AllUserConnection -ErrorAction SilentlyContinue) { $hit = $true }
+if (Get-VpnConnection -Name 'Ply' -ErrorAction SilentlyContinue) { $hit = $true }
 Remove-VpnConnection -Name 'Ply' -Force -AllUserConnection -ErrorAction SilentlyContinue
 Remove-VpnConnection -Name 'Ply' -Force -ErrorAction SilentlyContinue
-Write-Output 'OK'
+if ($hit) { 'REMOVED' } else { 'ABSENT' }
 `
-	_, _ = runPS(script, nil)
+	out, _ := runPS(script, nil)
+	return strings.Contains(out, "REMOVED")
 }
 
 type routeStateLite struct {

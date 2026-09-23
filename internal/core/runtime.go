@@ -402,9 +402,9 @@ func Connect(source string) (*Session, error) {
 	startWatchdog()
 	ip := ProbeExitIP()
 	if runtime.GOOS == "windows" {
-		note := "VPN включён. Весь IPv4 через Ply Tunnel."
+		note := "VPN включён. Весь трафик через Ply. Список VPN Windows не трогай."
 		if split {
-		note = "VPN включён. Сайты РФ без VPN, остальное через туннель."
+			note = "VPN включён. РФ напрямую, остальное через туннель. Список VPN Windows не трогай."
 		}
 		TrayBalloon("Ply", note)
 	}

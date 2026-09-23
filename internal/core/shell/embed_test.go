@@ -17,6 +17,8 @@ func TestHTMLLooksLikeSite(t *testing.T) {
 		"Тихий вход",
 		"светлая",
 		"Ключ",
+		"Список VPN в Windows",
+		"Включить VPN",
 		"подробнее",
 		"/v1/state",
 		"class=\"chrome\"",

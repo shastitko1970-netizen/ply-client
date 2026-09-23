@@ -23,6 +23,9 @@ func main() {
 		OnShow: func() {
 			go func() { _ = core.LaunchUI() }()
 		},
+		OnConnect: func() {
+			go core.EngineConnectSaved()
+		},
 		OnDisconnect: func() {
 			go core.EngineDisconnect()
 		},

@@ -116,6 +116,14 @@ func run(w *app.Window) error {
 			if u.engine == nil && !u.trayOn {
 				u.trayOn = core.AttachTray(core.TrayHooks{
 					Invalidate: w.Invalidate,
+					OnConnect: func() {
+						if strings.TrimSpace(u.url.Text()) == "" {
+							if saved := core.ReadURL(); saved != "" {
+								u.url.SetText(saved)
+							}
+						}
+						u.startConnect()
+					},
 					OnDisconnect: func() {
 						go u.doDisconnect()
 					},

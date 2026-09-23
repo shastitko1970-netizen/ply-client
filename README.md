@@ -4,17 +4,18 @@ VPN-клиент. Вставила ключ — туннель встал.
 
 Ключи: **vless://**, **hy2://**, **vmess://**, **trojan://**, **ss://** и https-подписка. Один слой, mux выключен. Сайты РФ можно пустить напрямую. В памяти одно ядро — Xray. Второе не качаем и не держим рядом.
 
-## Скачать 2.0.0
+## Скачать 2.0.1
 
-Один релиз, все платформы: [github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.0](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.0)
+Один релиз, все платформы: [github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.1](https://github.com/shastitko1970-netizen/ply-client/releases/tag/v2.0.1)
 
-- Windows: **Ply-2.0.0-win64.zip** → PlySetup.exe. Go качать не надо.
-- Linux: **Ply-2.0.0-linux-amd64.tar.gz** → `./install.sh` (Chromium и права на туннель сам).
-- macOS: **Ply-2.0.0-macos.zip** → `install.command`, нужен Chrome или Edge.
-- Android: **Ply-2.0.0.apk**
+- Windows: **Ply-2.0.1-win64.zip** → PlySetup.exe. Go качать не надо.
+- Linux: **Ply-2.0.1-linux-amd64.tar.gz** → `./install.sh` (Chromium и права на туннель сам).
+- macOS: **Ply-2.0.1-macos.zip** → `install.command`, нужен Chrome или Edge.
+- Android: **Ply-2.0.1.apk**
 
 ## Что нового
 
+- 2.0.1: пункт «Ply» больше не появляется в списке VPN Windows. Он был пустым RAS, и система писала «неверные данные аккаунта». Включай из окна или из значка у часов — «Включить VPN».
 - Светлая, тёмная и системная тема, плотность окна
 - Тихий вход: ядро поднимается без окна, туннель в трее
 - MTU 1280 / 1400 / 1500

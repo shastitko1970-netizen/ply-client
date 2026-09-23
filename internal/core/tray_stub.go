@@ -4,6 +4,7 @@ package core
 
 type TrayHooks struct {
 	OnShow       func()
+	OnConnect    func()
 	OnDisconnect func()
 	OnQuit       func()
 	Invalidate   func()
