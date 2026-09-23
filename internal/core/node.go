@@ -192,6 +192,8 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	if ip := net.ParseIP(n.dialAddr()); ip != nil {
 		rules = append(rules, map[string]any{"type": "field", "ip": []string{ip.String()}, "outboundTag": "direct"})
 	}
+	// Пул FakeDNS не «частная сеть». Иначе geoip:private утащит его мимо туннеля.
+	rules = append(rules, map[string]any{"type": "field", "ip": []string{"198.18.0.0/16"}, "outboundTag": "proxy"})
 	rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"})
 	// Только из tun/socks. Иначе запрос самого DNS-модуля снова попадёт в dns-out.
 	rules = append(rules, map[string]any{
@@ -205,13 +207,8 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	}
 	rules = append(rules, map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"})
 
-	// Провайдерский DNS сюда не попадает (на Windows его перекрывает NRPT).
-	// Чужие имена — настоящий IPv4 через туннель, соединение сразу на этот адрес.
-	// Фейковый 198.18 заставлял сервер искать имя заново на каждый клик.
-	foreignDNS := map[string]any{
-		"address": "https://1.1.1.1/dns-query",
-		"detour":  "proxy",
-	}
+	// РФ — живой DNS напрямую. Остальное — фейковый адрес: в туннель уходит имя,
+	// а не «русский» IP провайдера. Пакеты не разбираем, соединение не ждёт ClientHello.
 	var dnsServers []any
 	if split {
 		dnsServers = []any{
@@ -221,10 +218,10 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 				"skipFallback": true,
 				"detour":       "direct",
 			},
-			foreignDNS,
+			"fakedns",
 		}
 	} else {
-		dnsServers = []any{foreignDNS}
+		dnsServers = []any{"fakedns"}
 	}
 	dns := map[string]any{
 		"servers":       dnsServers,
@@ -234,6 +231,10 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"dns": dns,
+		"fakedns": map[string]any{
+			"ipPool":   "198.18.0.0/16",
+			"poolSize": 65535,
+		},
 		"policy": map[string]any{
 			"levels": map[string]any{
 				"0": map[string]any{"bufferSize": 1024, "connIdle": 300},
@@ -273,8 +274,13 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 }
 
 func sniffing() map[string]any {
-	// IP уже настоящий. Разбор первых пакетов только держит сайт, пока ищется имя.
-	return map[string]any{"enabled": false}
+	// Только карта фейкового IP → имя, без чтения пакетов. QUIC не трогаем.
+	// routeOnly нельзя: серверу нужно имя, иначе он звонит в заглушку провайдера.
+	return map[string]any{
+		"enabled":      true,
+		"destOverride": []string{"fakedns"},
+		"metadataOnly": true,
+	}
 }
 
 func tunSettings(fd, mtu int) map[string]any {
@@ -290,7 +296,7 @@ func tunSettings(fd, mtu int) map[string]any {
 		s["fd"] = fd
 		return s
 	}
-	s["gateway"] = []string{"198.18.0.1/30"}
+	s["gateway"] = []string{"198.18.0.1/16"}
 	s["dns"] = []string{"1.1.1.1"}
 	// IPv6 в туннель не кладём: у узла его часто нет, AAAA у ИИ зависают.
 	s["autoSystemRoutingTable"] = []string{"0.0.0.0/1", "128.0.0.0/1"}

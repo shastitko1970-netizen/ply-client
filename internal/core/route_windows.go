@@ -246,12 +246,8 @@ Remove-NetRoute -DestinationPrefix '8000::/1' -Confirm:$false -ErrorAction Silen
 netsh advfirewall firewall delete rule name='Ply No IPv6' | Out-Null
 netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 100 4 | Out-Null
 try {
-  $lo = Get-NetIPInterface -AddressFamily IPv6 | Where-Object { $_.InterfaceAlias -match 'Loopback' } | Select-Object -First 1
-  if ($lo) {
-    $hasLo = Get-NetRoute -DestinationPrefix '::/0' -InterfaceIndex ([int]$lo.InterfaceIndex) -PolicyStore ActiveStore -ErrorAction SilentlyContinue
-    if (-not $hasLo) {
-      New-NetRoute -DestinationPrefix '::/0' -InterfaceIndex ([int]$lo.InterfaceIndex) -NextHop '::' -RouteMetric 1 -PolicyStore ActiveStore -ErrorAction Stop | Out-Null
-    }
+  Get-NetRoute -DestinationPrefix '::/0' -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -match 'Loopback' } | ForEach-Object {
+    Remove-NetRoute -DestinationPrefix '::/0' -InterfaceIndex $_.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
   }
 } catch {}
 

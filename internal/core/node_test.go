@@ -237,16 +237,16 @@ func TestRenderXrayHasTUN(t *testing.T) {
 	if !strings.Contains(s, `"mtu": 1400`) {
 		t.Fatal("tun mtu should be 1400")
 	}
-	if strings.Contains(s, "routeOnly") || strings.Contains(s, "quic") || strings.Contains(s, "tcpMaxSeg") || strings.Contains(s, "fakedns") {
-		t.Fatal("full tunnel must not sniff, clamp the server socket, or use fake IPs")
+	if strings.Contains(s, "routeOnly") || strings.Contains(s, "quic") || strings.Contains(s, "tcpMaxSeg") || strings.Contains(s, "dns-query") {
+		t.Fatal("full tunnel must not sniff quic, clamp the socket, or use DoH")
 	}
-	for _, need := range []string{`"dns-out"`, "dns-query", "198.18.0.1/30"} {
+	for _, need := range []string{`"dns-out"`, `"fakedns"`, `"metadataOnly": true`, "198.18.0.0/16", "198.18.0.1/16"} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("config missing %s", need)
 		}
 	}
-	if strings.Contains(s, `"::/1"`) || strings.Contains(s, "fdfe:dcba") || strings.Contains(s, "198.18.0.0/16") {
-		t.Fatal("no IPv6 inside the tun and no fake-ip pool")
+	if strings.Contains(s, `"::/1"`) || strings.Contains(s, "fdfe:dcba") {
+		t.Fatal("no IPv6 inside the tun")
 	}
 	if strings.Contains(s, "IPIfNonMatch") {
 		t.Fatal("IPIfNonMatch is slow, want AsIs")
@@ -280,15 +280,16 @@ func TestRenderXraySplitRussia(t *testing.T) {
 		"AsIs",
 		"77.88.8.8",
 		"domain:vk.com",
-		"dns-query",
-		"198.18.0.1/30",
+		"fakedns",
+		"metadataOnly",
+		"198.18.0.1/16",
 	} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("split config missing %s", need)
 		}
 	}
-	if strings.Contains(s, "IPIfNonMatch") || strings.Contains(s, "quic") || strings.Contains(s, "routeOnly") || strings.Contains(s, "fakedns") {
-		t.Fatal("split should not use IPIfNonMatch, quic sniff, routeOnly or fake IPs")
+	if strings.Contains(s, "IPIfNonMatch") || strings.Contains(s, "quic") || strings.Contains(s, "routeOnly") || strings.Contains(s, "dns-query") {
+		t.Fatal("split should not use IPIfNonMatch, quic sniff, routeOnly or DoH")
 	}
 	if !strings.Contains(s, `"dns-out"`) {
 		t.Fatal("tun DNS should hit dns-out")
