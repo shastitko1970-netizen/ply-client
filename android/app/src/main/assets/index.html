@@ -51,6 +51,7 @@ body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-are
   <input id="url" class="field" placeholder="vless  hy2  vmess  trojan  ss  или ссылка" spellcheck="false" autocomplete="off"/>
   <div class="k" style="margin-top:10px">Узел</div>
   <select id="nodes" class="field"></select>
+  <button id="subrefresh" type="button" style="margin-top:8px;height:42px;width:100%;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--fg);font:14px 'IBM Plex Sans',sans-serif">Обновить подписку</button>
   <div class="sw">
     <div><div class="t">РФ напрямую</div><div class="s">Яндекс, VK и .ru без VPN</div></div>
     <button id="split" class="toggle on" type="button" aria-label="РФ напрямую"><i></i></button>
@@ -147,6 +148,39 @@ $("power").onclick = () => {
   }catch(e){ $("err").hidden=false; $("err").textContent=String(e); }
 };
 $("url").addEventListener("keydown", e => { if (e.key==="Enter") $("power").click(); });
+$("subrefresh").onclick = () => {
+  const url = $("url").value.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    $("err").hidden = false;
+    $("err").textContent = "обновляется только ссылка подписки, не одиночный ключ";
+    return;
+  }
+  $("subrefresh").textContent = "…";
+  try {
+    const raw = PlyNative.refresh(url);
+    const data = JSON.parse(raw);
+    if (data && data.error) {
+      $("err").hidden = false;
+      $("err").textContent = data.error;
+    } else {
+      $("err").hidden = true;
+      if (data.url) {
+        $("url").value = data.url;
+        try { localStorage.setItem("ply.url", data.url); } catch (e) {}
+      }
+      fillNodes(Array.isArray(data.nodes) ? data.nodes : []);
+      if (live) {
+        const next = $("url").value.trim();
+        try { localStorage.setItem("ply.url", next); } catch (e) {}
+        PlyNative.connect(next, $("split").classList.contains("on"), mtu, nodeId || $("nodes").value || "");
+      }
+    }
+  } catch (e) {
+    $("err").hidden = false;
+    $("err").textContent = String(e);
+  }
+  $("subrefresh").textContent = "Обновить подписку";
+};
 </script>
 </body>
 </html>

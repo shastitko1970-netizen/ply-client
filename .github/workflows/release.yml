@@ -202,7 +202,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Ply ${{ github.ref_name }}
           body: |
-            Список узлов из подписки, выбранный запоминается. Kill-switch, диагноз, ключ с правами 0600 (на Windows ещё DPAPI).
+            Список узлов из подписки, выбранный запоминается. «Обновить подписку» подхватывает new-url, new-domain и fallback-url.
+            Kill-switch, диагноз, ключ с правами 0600 (на Windows ещё DPAPI).
             macOS: install.command ставит Ply.app и тихое ядро.
             Android APK этим workflow не собирается. Сборки не подписаны.
             Ключи: vless, hy2, vmess, trojan, ss.

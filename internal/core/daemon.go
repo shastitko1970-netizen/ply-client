@@ -274,6 +274,36 @@ func daemonMux(token string) http.Handler {
 		}
 		writeJSON(w, currentSnap())
 	})
+	mux.HandleFunc("/v1/sub", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		var body struct {
+			URL string `json:"url"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body)
+		url := strings.TrimSpace(body.URL)
+		if url == "" {
+			url = ReadURL()
+		}
+		if url == "" {
+			http.Error(w, "ключа нет", 400)
+			return
+		}
+		if !isHTTPSource(CleanSource(url)) {
+			http.Error(w, "обновляется только ссылка подписки, не одиночный ключ", 400)
+			return
+		}
+		if _, err := RefreshCatalog(url); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		if currentSnap().Live {
+			go daemonConnect(ReadURL(), false)
+		}
+		writeJSON(w, currentSnap())
+	})
 	mux.HandleFunc("/v1/select", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method", 405)

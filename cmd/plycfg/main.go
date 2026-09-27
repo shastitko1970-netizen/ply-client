@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"ply/internal/core"
 )
@@ -17,6 +18,7 @@ func main() {
 	mtu := flag.Int("mtu", 0, "MTU 1280, 1400 или 1500")
 	node := flag.String("node", "", "id узла")
 	list := flag.Bool("list", false, "json-список узлов")
+	pull := flag.Bool("pull", false, "обновить подписку и напечатать новый адрес")
 	flag.Parse()
 	src := *url
 	if src == "" && flag.NArg() > 0 {
@@ -27,7 +29,7 @@ func main() {
 		os.Exit(2)
 	}
 	if *list {
-		cards, _, err := core.ParseCatalog(src)
+		cards, _, _, err := core.ParseCatalog(src)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
@@ -35,6 +37,29 @@ func main() {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(cards); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+	if *pull {
+		low := strings.ToLower(strings.TrimSpace(src))
+		if !strings.HasPrefix(low, "http://") && !strings.HasPrefix(low, "https://") {
+			fmt.Fprintln(os.Stderr, "обновляется только ссылка подписки")
+			os.Exit(1)
+		}
+		cards, err := core.RefreshCatalog(src)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		u := core.ReadURL()
+		if u == "" {
+			u = src
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(map[string]any{"url": u, "nodes": cards}); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}

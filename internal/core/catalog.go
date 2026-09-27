@@ -80,23 +80,25 @@ func AllShareLines(body string) []string {
 	return out
 }
 
-func ParseCatalog(source string) ([]NodeCard, []string, error) {
+func ParseCatalog(source string) ([]NodeCard, []string, string, error) {
 	source = CleanSource(source)
 	if err := rejectUnsupported(source); err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
-	var body string
+	var body, stored string
 	switch {
 	case isShare(source):
 		body = source
-	case strings.HasPrefix(source, "http://"), strings.HasPrefix(source, "https://"):
-		b, err := FetchSub(source)
+		stored = source
+	case isHTTPSource(source):
+		b, st, err := fetchSubRotate(source)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		body = b
+		stored = st
 	default:
-		return nil, nil, fmt.Errorf("нужна ссылка подписки или ключ vless, vmess, trojan, ss или hy2")
+		return nil, nil, "", fmt.Errorf("нужна ссылка подписки или ключ vless, vmess, trojan, ss или hy2")
 	}
 	var cards []NodeCard
 	var lines []string
@@ -110,11 +112,14 @@ func ParseCatalog(source string) ([]NodeCard, []string, error) {
 	}
 	if len(cards) == 0 {
 		if _, err := FirstShareLine(expandSubBody(body)); err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
-		return nil, nil, fmt.Errorf("в ответе нет ключа vless/vmess/trojan/ss/hy2")
+		return nil, nil, "", fmt.Errorf("в ответе нет ключа vless/vmess/trojan/ss/hy2")
 	}
-	return cards, lines, nil
+	if strings.TrimSpace(stored) == "" {
+		stored = source
+	}
+	return cards, lines, StripSubHash(stored), nil
 }
 
 func pickNode(lines []string, want string) (*Node, error) {
@@ -138,7 +143,7 @@ func pickNode(lines []string, want string) (*Node, error) {
 }
 
 func ResolveChosen(source, want string) (*Node, []NodeCard, string, error) {
-	cards, lines, err := ParseCatalog(source)
+	cards, lines, stored, err := ParseCatalog(source)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -146,7 +151,11 @@ func ResolveChosen(source, want string) (*Node, []NodeCard, string, error) {
 	if err != nil {
 		return nil, nil, "", err
 	}
-	_ = saveCatalog(StripSubHash(CleanSource(source)), lines)
+	if strings.TrimSpace(stored) == "" {
+		stored = CleanSource(source)
+	}
+	keepSubURL(stored)
+	_ = saveCatalog(StripSubHash(stored), lines)
 	setNodes(cards)
 	p := LoadPrefs()
 	if p.Node != n.ID() {
@@ -164,11 +173,15 @@ func RefreshCatalog(source string) ([]NodeCard, error) {
 	if source == "" {
 		return nil, fmt.Errorf("ключа нет")
 	}
-	cards, lines, err := ParseCatalog(source)
+	cards, lines, stored, err := ParseCatalog(source)
 	if err != nil {
 		return nil, err
 	}
-	_ = saveCatalog(StripSubHash(CleanSource(source)), lines)
+	if strings.TrimSpace(stored) == "" {
+		stored = CleanSource(source)
+	}
+	keepSubURL(stored)
+	_ = saveCatalog(StripSubHash(stored), lines)
 	setNodes(cards)
 	return cards, nil
 }

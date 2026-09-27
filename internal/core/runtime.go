@@ -419,7 +419,9 @@ func Connect(source string) (*Session, error) {
 			return nil, fmt.Errorf("kill-switch: %w", err)
 		}
 	}
-	_ = SaveURL(source)
+	if !isHTTPSource(CleanSource(source)) {
+		_ = SaveURL(source)
+	}
 	startWatchdog()
 	if runtime.GOOS == "windows" {
 		note := "VPN включён. Весь трафик через Ply."

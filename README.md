@@ -36,7 +36,7 @@ Android: исходники в [`android/`](android). APK в релиз попа
 ## Как пользоваться
 
 1. Выключи другие VPN-клиенты.
-2. Вставь ключ или ссылку подписки. «Список» покажет узлы, если их несколько.
+2. Вставь ключ или ссылку подписки. «Список» покажет узлы, если их несколько. «Обновить подписку» забирает свежий список по той же ссылке. Если сервис прислал новый адрес (`new-url`, `new-domain` или запасной `fallback-url`, как у Happ), старая ссылка сама сменится.
 3. «РФ напрямую» — Яндекс, VK, `.ru` без туннеля. Остальное — через узел.
 4. «Не выпускать» — kill-switch. На Windows чужой исходящий режется, пока туннель должен жить (наружу ходит только `xray.exe`). На Linux то же через iptables. На macOS тумблер честно скажет, что его ещё нет.
 5. «Диагноз» — хвост `xray.log` и кнопка скопировать.
@@ -60,7 +60,7 @@ xray           tun ply0, mixed 127.0.0.1:10808
 
 ```bash
 go test ./internal/core/...
-go build -trimpath -ldflags "-s -w -X ply/internal/core.Version=2.1.0" -o PlyCore ./cmd/worker
+go build -trimpath -ldflags "-s -w -X ply/internal/core.Version=2.1.1" -o PlyCore ./cmd/worker
 ```
 
 Windows-окно: `./cmd/ply`. Linux и macOS-окно: `./cmd/launch` (это бинарь `Ply` в архиве).

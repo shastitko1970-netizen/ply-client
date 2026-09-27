@@ -95,6 +95,31 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String refresh(String url) {
+            try {
+                File bin = ensureBin("plycfg");
+                ProcessBuilder pb = new ProcessBuilder(
+                    bin.getAbsolutePath(),
+                    "-pull",
+                    "-url",
+                    url == null ? "" : url
+                );
+                pb.directory(bin.getParentFile());
+                pb.redirectErrorStream(false);
+                Process p = pb.start();
+                String err = readAll(p.getErrorStream());
+                String out = readAll(p.getInputStream());
+                int code = p.waitFor();
+                if (code != 0) {
+                    return "{\"error\":" + jsonQuote(err.length() == 0 ? "подписка не обновилась" : err) + "}";
+                }
+                return out;
+            } catch (Exception e) {
+                return "{\"error\":" + jsonQuote(String.valueOf(e.getMessage())) + "}";
+            }
+        }
+
+        @JavascriptInterface
         public void disconnect() {
             runOnUiThread(new Runnable() {
                 @Override public void run() {

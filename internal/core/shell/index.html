@@ -170,6 +170,7 @@ details[open] summary::after{content:" скрыть"}
           <select id="nodes" class="field" style="margin-top:0"></select>
           <button id="nodesrefresh" class="btn ghost" type="button" style="width:auto;padding:0 10px">список</button>
         </div>
+        <button id="subrefresh" class="btn ghost" type="button" style="margin-top:8px">Обновить подписку</button>
         <div class="sw">
           <div>
             <div class="t">РФ напрямую</div>
@@ -272,6 +273,7 @@ const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 let snap = {status:"выкл", split:true, auto:true};
 let lastBusy = false;
 let lastLive = false;
+let shownURL = "";
 
 async function api(path, body){
   const opt = {headers:{Authorization:"Bearer "+TOKEN}};
@@ -281,7 +283,14 @@ async function api(path, body){
     opt.body = JSON.stringify(body);
   }
   const r = await fetch(path, opt);
-  if (!r.ok) throw new Error("ядро HTTP "+r.status);
+  if (!r.ok) {
+    let msg = "ядро HTTP " + r.status;
+    try {
+      const t = (await r.text()).trim();
+      if (t && t.length < 400) msg = t;
+    } catch (e) {}
+    throw new Error(msg);
+  }
   return r.json();
 }
 
@@ -330,7 +339,8 @@ function paint(s){
     p.innerHTML = ICON + (live ? '<span class="ring"></span>' : "");
   }
   $("cap").textContent = !snap.admin ? "нужны права" : snap.busy ? "поднимаю…" : live ? "выключить" : "Вставь ключ";
-  if (snap.url && !$("url").value) $("url").value = snap.url;
+  if (snap.url && ($("url").value === "" || $("url").value === shownURL)) $("url").value = snap.url;
+  if (snap.url) shownURL = snap.url;
   setToggle($("split"), !!snap.split);
   setToggle($("auto"), snap.auto !== false);
   setToggle($("kill"), !!(snap.kill || (snap.prefs && snap.prefs.kill)));
@@ -425,6 +435,15 @@ $("nodesrefresh").onclick = async () => {
   try { await api("/v1/nodes", {url:$("url").value.trim()}); await pull(); }
   catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
   $("nodesrefresh").textContent = "список";
+};
+$("subrefresh").onclick = async () => {
+  $("subrefresh").textContent = "…";
+  try {
+    const s = await api("/v1/sub", {url:$("url").value.trim()});
+    if (s && s.url) { shownURL = s.url; $("url").value = s.url; }
+    paint(s);
+  } catch(e) { $("errbox").hidden=false; $("err").textContent=e.message; }
+  $("subrefresh").textContent = "Обновить подписку";
 };
 $("diag").onclick = async () => {
   try {
