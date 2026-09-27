@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ func main() {
 	out := flag.String("out", "", "config.json")
 	fd := flag.Int("fd", -1, "tun fd (Android)")
 	mtu := flag.Int("mtu", 0, "MTU 1280, 1400 или 1500")
+	node := flag.String("node", "", "id узла")
+	list := flag.Bool("list", false, "json-список узлов")
 	flag.Parse()
 	src := *url
 	if src == "" && flag.NArg() > 0 {
@@ -23,7 +26,21 @@ func main() {
 		fmt.Fprintln(os.Stderr, "нужен ключ")
 		os.Exit(2)
 	}
-	n, err := core.Resolve(src)
+	if *list {
+		cards, _, err := core.ParseCatalog(src)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(cards); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+	n, _, _, err := core.ResolveChosen(src, *node)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -37,7 +54,7 @@ func main() {
 		os.Stdout.Write(b)
 		return
 	}
-	if err := os.WriteFile(*out, b, 0644); err != nil {
+	if err := os.WriteFile(*out, b, 0600); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}

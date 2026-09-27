@@ -67,6 +67,9 @@ func main() {
 	if openWebShell() {
 		os.Exit(0)
 	}
+	if openBrowserShell() {
+		os.Exit(0)
+	}
 	go func() {
 		w := new(app.Window)
 		w.Option(

@@ -74,6 +74,8 @@ html:not([data-os="windows"]) .chrome{display:none}
 .field{margin-top:6px;height:36px;width:100%;border:1px solid var(--line);border-radius:10px;background:var(--field);color:var(--fg);padding:0 10px;font-size:13px;outline:none;font-family:ui-monospace,"IBM Plex Mono",Consolas,monospace;transition:border-color .15s var(--ease),box-shadow .15s var(--ease)}
 .field:focus{border-color:var(--line2);box-shadow:0 0 0 3px rgba(200,204,212,.08)}
 .field::placeholder{color:var(--dim);font-family:"IBM Plex Sans","Segoe UI",sans-serif}
+select.field{font-family:"IBM Plex Sans","Segoe UI",sans-serif}
+pre.log{margin:8px 0 0;max-height:140px;overflow:auto;font-size:11px;line-height:1.35;color:var(--muted);white-space:pre-wrap;word-break:break-word}
 .power{position:relative;width:72px;height:72px;border-radius:50%;border:1px solid var(--line2);background:var(--panel);color:var(--fg);display:grid;place-items:center;transition:transform .18s var(--ease),border-color .18s var(--ease),background .18s var(--ease),color .18s var(--ease),box-shadow .22s var(--ease)}
 .power:hover{border-color:var(--fg);transform:scale(1.05)}
 .power:active{transform:scale(.97)}
@@ -163,6 +165,11 @@ details[open] summary::after{content:" скрыть"}
       <section class="card">
         <div class="k">Ключ</div>
         <input id="url" class="field" spellcheck="false" autocomplete="off" placeholder="vless  hy2  vmess  trojan  ss  или ссылка подписки"/>
+        <div class="k" style="margin-top:8px">Узел</div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <select id="nodes" class="field" style="margin-top:0"></select>
+          <button id="nodesrefresh" class="btn ghost" type="button" style="width:auto;padding:0 10px">список</button>
+        </div>
         <div class="sw">
           <div>
             <div class="t">РФ напрямую</div>
@@ -176,6 +183,13 @@ details[open] summary::after{content:" скрыть"}
             <div class="s" id="autosub">ядро при входе</div>
           </div>
           <button id="auto" class="toggle on" type="button" aria-label="Вместе с системой" aria-pressed="true"><i></i></button>
+        </div>
+        <div class="sw">
+          <div>
+            <div class="t">Не выпускать</div>
+            <div class="s">если ядро падает, чужой трафик не уходит мимо</div>
+          </div>
+          <button id="kill" class="toggle" type="button" aria-label="Не выпускать" aria-pressed="false"><i></i></button>
         </div>
         <p class="note">Список VPN в Windows не наш. Включай кнопкой здесь или пунктом «Включить VPN» у часов. Имя сайта берём из запроса, не из адреса провайдера.</p>
         <div id="live" class="livebox" hidden>
@@ -225,6 +239,11 @@ details[open] summary::after{content:" скрыть"}
           </div>
           <p class="note">Ядро — Xray, одно в памяти. Второе не качаем и не держим рядом: смена была бы только после остановки текущего.</p>
         </div>
+      </section>
+      <section class="card" id="diagcard">
+        <button id="diag" class="btn ghost" type="button">Диагноз</button>
+        <pre id="log" class="log" hidden></pre>
+        <button id="copylog" class="btn ghost" type="button" style="margin-top:8px" hidden>Скопировать</button>
       </section>
       <section id="errbox" class="card" hidden><p id="err" class="alert"></p></section>
       <section id="adminbox" class="card" hidden>
@@ -314,6 +333,8 @@ function paint(s){
   if (snap.url && !$("url").value) $("url").value = snap.url;
   setToggle($("split"), !!snap.split);
   setToggle($("auto"), snap.auto !== false);
+  setToggle($("kill"), !!(snap.kill || (snap.prefs && snap.prefs.kill)));
+  paintNodes(snap);
   const ac = autoCopy(plat);
   $("autolbl").textContent = ac[0];
   const pref = snap.prefs || {};
@@ -349,6 +370,30 @@ function paint(s){
   else if (!u) $("check").textContent = "проверить обновления";
 }
 
+function paintNodes(s){
+  const list = s.nodes || [];
+  const sel = $("nodes");
+  const sig = list.map(n => n.id).join(",");
+  if (sel.dataset.sig !== sig){
+    sel.innerHTML = "";
+    if (!list.length){
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = "одна строка, или «список»";
+      sel.appendChild(o);
+    }
+    list.forEach(n => {
+      const o = document.createElement("option");
+      o.value = n.id;
+      const name = n.remark || n.label || n.proto || "узел";
+      o.textContent = name + "  ·  " + (n.host || "");
+      sel.appendChild(o);
+    });
+    sel.dataset.sig = sig;
+  }
+  const id = s.nodeId || (s.prefs && s.prefs.node) || "";
+  if (id && list.some(n => n.id === id)) sel.value = id;
+}
 async function pull(){
   try{ paint(await api("/v1/state")); }
   catch(e){ /* ядро спит */ }
@@ -358,13 +403,54 @@ $("power").onclick = async () => {
   if (snap.busy) return;
   try{
     if (snap.live) await api("/v1/disconnect", {});
-    else await api("/v1/connect", {url:$("url").value.trim(), auto:snap.auto !== false});
+    else await api("/v1/connect", {url:$("url").value.trim(), auto:snap.auto !== false, node:$("nodes").value || ""});
     await pull();
   }catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
 };
 $("url").addEventListener("keydown", (e) => { if (e.key === "Enter") $("power").click(); });
 $("split").onclick = async () => { await api("/v1/split", {on: !$("split").classList.contains("on")}); await pull(); };
 $("auto").onclick = async () => { await api("/v1/autostart", {on: !$("auto").classList.contains("on")}); await pull(); };
+$("kill").onclick = async () => {
+  try { await api("/v1/kill", {on: !$("kill").classList.contains("on")}); await pull(); }
+  catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+};
+$("nodes").onchange = async () => {
+  const id = $("nodes").value;
+  if (!id) return;
+  try { await api("/v1/select", {id}); await pull(); }
+  catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+};
+$("nodesrefresh").onclick = async () => {
+  $("nodesrefresh").textContent = "…";
+  try { await api("/v1/nodes", {url:$("url").value.trim()}); await pull(); }
+  catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+  $("nodesrefresh").textContent = "список";
+};
+$("diag").onclick = async () => {
+  try {
+    const r = await api("/v1/log", {});
+    $("log").hidden = false;
+    $("copylog").hidden = false;
+    $("log").textContent = (r && r.log) ? r.log : "лог пуст";
+  } catch(e) { $("errbox").hidden=false; $("err").textContent=e.message; }
+};
+$("copylog").onclick = () => copyText($("log").textContent || "");
+function copyText(s){
+  const done = () => { $("copylog").textContent = "скопировано"; setTimeout(() => { $("copylog").textContent = "Скопировать"; }, 1200); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(s).then(done).catch(() => fallbackCopy(s, done));
+    return;
+  }
+  fallbackCopy(s, done);
+}
+function fallbackCopy(s, done){
+  const t = document.createElement("textarea");
+  t.value = s;
+  document.body.appendChild(t);
+  t.select();
+  try { document.execCommand("copy"); if (done) done(); } catch(e) {}
+  t.remove();
+}
 $("refresh").onclick = async () => { await api("/v1/refresh", {}); await pull(); };
 $("check").onclick = async () => { $("check").textContent = "ищу…"; await api("/v1/update/check", {}); await pull(); };
 $("apply").onclick = async () => { $("apply").textContent = "Скачиваю…"; await api("/v1/update/apply", {}); };
@@ -393,7 +479,7 @@ function markSeg(id, v){
   root.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === String(v)));
 }
 async function pushPrefs(patch){
-  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false}, snap.prefs || {}, patch);
+  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false, kill:!!(snap.prefs && snap.prefs.kill), node:(snap.prefs && snap.prefs.node) || snap.nodeId || ""}, snap.prefs || {}, patch);
   try { paint(await api("/v1/prefs", base)); }
   catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
 }

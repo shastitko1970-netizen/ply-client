@@ -15,6 +15,8 @@ type Prefs struct {
 	MTU     int    `json:"mtu"`
 	Split   bool   `json:"split"`
 	Auto    bool   `json:"auto"`
+	Kill    bool   `json:"kill"`
+	Node    string `json:"node"`
 }
 
 func DefaultPrefs() Prefs {
@@ -94,7 +96,7 @@ func SavePrefs(p Prefs) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "prefs.json"), b, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "prefs.json"), b, 0600); err != nil {
 		return err
 	}
 	v := "0\n"

@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"runtime"
 
 	"github.com/jchv/go-webview2"
@@ -58,6 +59,18 @@ func openWebShell() bool {
 		w.Dispatch(func() { w.Navigate(u) })
 	}()
 	w.Run()
+	return true
+}
+
+func openBrowserShell() bool {
+	d, err := core.EnsureWorker()
+	if err != nil {
+		return false
+	}
+	cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", d.ShellURL())
+	if err := cmd.Start(); err != nil {
+		return false
+	}
 	return true
 }
 

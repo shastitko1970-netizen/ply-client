@@ -40,7 +40,7 @@ func MigrateLegacyData(dest string) {
 		return
 	}
 	_ = os.MkdirAll(filepath.Dir(neu), 0755)
-	_ = os.WriteFile(neu, b, 0644)
+	_ = writeSecret(neu, b)
 }
 
 func CopyFile(src, dst string) error {

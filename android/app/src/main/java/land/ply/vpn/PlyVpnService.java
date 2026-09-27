@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -47,6 +48,8 @@ public class PlyVpnService extends VpnService {
                 stopSelf();
                 return START_NOT_STICKY;
             }
+            String node = intent != null ? intent.getStringExtra(MainActivity.EXTRA_NODE) : "";
+            if (node == null) node = "";
             File cfg = new File(dir, "config.json");
             File plycfg = copyBin(dir, "plycfg");
             ProcessBuilder gen = new ProcessBuilder(
@@ -55,12 +58,18 @@ public class PlyVpnService extends VpnService {
                 "-split=" + (split ? "true" : "false"),
                 "-fd", String.valueOf(tun.getFd()),
                 "-mtu", String.valueOf(mtu),
+                "-node", node,
                 "-out", cfg.getAbsolutePath()
             );
             gen.directory(dir);
+            gen.redirectErrorStream(true);
             Process g = gen.start();
+            String genOut = readAll(g.getInputStream());
             if (g.waitFor() != 0) {
-                writeFallback(cfg, tun.getFd());
+                notifyFail(genOut);
+                stopTunnel();
+                stopSelf();
+                return START_NOT_STICKY;
             }
             ArrayList<String> cmd = new ArrayList<String>();
             cmd.add(bin.getAbsolutePath());
@@ -73,7 +82,10 @@ public class PlyVpnService extends VpnService {
             pb.redirectErrorStream(true);
             xray = pb.start();
         } catch (Exception e) {
+            notifyFail(e.getMessage());
+            stopTunnel();
             stopSelf();
+            return START_NOT_STICKY;
         }
         return START_STICKY;
     }
@@ -120,19 +132,34 @@ public class PlyVpnService extends VpnService {
         in.close();
     }
 
-    private void writeFallback(File cfg, int fd) throws Exception {
-        String body = "{\n" +
-            "  \"log\": {\"loglevel\": \"warning\"},\n" +
-            "  \"inbounds\": [{\n" +
-            "    \"tag\": \"tun\", \"protocol\": \"tun\",\n" +
-            "    \"settings\": {\"mtu\": 1400, \"fd\": " + fd + "},\n" +
-            "    \"sniffing\": {\"enabled\": true, \"destOverride\": [\"http\", \"tls\", \"quic\"], \"routeOnly\": true}\n" +
-            "  }],\n" +
-            "  \"outbounds\": [{\"tag\": \"direct\", \"protocol\": \"freedom\"}]\n" +
-            "}\n";
-        FileOutputStream out = new FileOutputStream(cfg);
-        out.write(body.getBytes("UTF-8"));
-        out.close();
+    private void notifyFail(String msg) {
+        if (msg == null || msg.trim().length() == 0) msg = "ключ не разобрался";
+        msg = msg.trim().replace('\n', ' ');
+        if (msg.length() > 140) msg = msg.substring(0, 140);
+        String ch = "ply";
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel c = new NotificationChannel(ch, "Ply", NotificationManager.IMPORTANCE_LOW);
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.createNotificationChannel(c);
+        }
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(this, ch);
+        else b = new Notification.Builder(this);
+        Notification n = b.setContentTitle("Ply")
+            .setContentText(msg)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .build();
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(2, n);
+    }
+
+    private static String readAll(InputStream in) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        int n;
+        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        in.close();
+        return out.toString("UTF-8");
     }
 
     private Notification note() {

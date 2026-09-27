@@ -49,6 +49,8 @@ body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-are
 <div class="card">
   <div class="k">Ключ</div>
   <input id="url" class="field" placeholder="vless  hy2  vmess  trojan  ss  или ссылка" spellcheck="false" autocomplete="off"/>
+  <div class="k" style="margin-top:10px">Узел</div>
+  <select id="nodes" class="field"></select>
   <div class="sw">
     <div><div class="t">РФ напрямую</div><div class="s">Яндекс, VK и .ru без VPN</div></div>
     <button id="split" class="toggle on" type="button" aria-label="РФ напрямую"><i></i></button>
@@ -68,8 +70,39 @@ body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-are
 </div>
 <p class="err" id="err" hidden></p>
 <script>
-let live=false, mtu=1400;
+let live=false, mtu=1400, nodeId="";
 const $ = id => document.getElementById(id);
+function fillNodes(list){
+  const sel = $("nodes");
+  sel.innerHTML = "";
+  if (!list || !list.length){
+    const o = document.createElement("option");
+    o.value = "";
+    o.textContent = "первая строка";
+    sel.appendChild(o);
+    nodeId = "";
+    return;
+  }
+  list.forEach(n => {
+    const o = document.createElement("option");
+    o.value = n.id;
+    o.textContent = (n.remark || n.label || n.proto) + " · " + (n.host || "");
+    sel.appendChild(o);
+  });
+  if (nodeId && list.some(n => n.id === nodeId)) sel.value = nodeId;
+  else nodeId = sel.value;
+}
+function loadNodes(){
+  const url = $("url").value.trim();
+  if (!url){ fillNodes([]); return; }
+  try {
+    const raw = PlyNative.nodes(url);
+    const data = JSON.parse(raw);
+    if (data && data.error){ $("err").hidden=false; $("err").textContent=data.error; fillNodes([]); return; }
+    $("err").hidden=true;
+    fillNodes(Array.isArray(data) ? data : []);
+  } catch(e) { fillNodes([]); }
+}
 function setTheme(t){
   document.documentElement.dataset.theme = t || "system";
   document.querySelectorAll("#themes button").forEach(b => b.classList.toggle("on", b.dataset.v===t));
@@ -77,11 +110,15 @@ function setTheme(t){
 }
 try{
   const u=localStorage.getItem("ply.url"); if(u) $("url").value=u;
+  nodeId=localStorage.getItem("ply.node")||"";
   const t=localStorage.getItem("ply.theme")||"system"; setTheme(t);
   const m=Number(localStorage.getItem("ply.mtu")||"1400"); if(m===1280||m===1400||m===1500) mtu=m;
   document.querySelectorAll("#mtus button").forEach(b => b.classList.toggle("on", Number(b.dataset.v)===mtu));
 }catch(e){}
 $("split").onclick = () => $("split").classList.toggle("on");
+$("nodes").onchange = () => { nodeId = $("nodes").value; try{ localStorage.setItem("ply.node", nodeId); }catch(e){} };
+$("url").addEventListener("change", loadNodes);
+if ($("url").value.trim()) loadNodes();
 document.querySelectorAll("#themes button").forEach(b => b.onclick = () => setTheme(b.dataset.v));
 document.querySelectorAll("#mtus button").forEach(b => b.onclick = () => {
   mtu = Number(b.dataset.v);
@@ -102,7 +139,7 @@ $("power").onclick = () => {
   $("err").hidden=true;
   try{ localStorage.setItem("ply.url", url); }catch(e){}
   try{
-    PlyNative.connect(url, $("split").classList.contains("on"), mtu);
+    PlyNative.connect(url, $("split").classList.contains("on"), mtu, nodeId || $("nodes").value || "");
     live=true;
     $("power").classList.add("ok");
     $("pill").className="pill ok"; $("pill").textContent="в сети";

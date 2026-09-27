@@ -62,7 +62,7 @@ func SaveURL(u string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "url.txt"), []byte(strings.TrimSpace(u)+"\n"), 0644)
+	return writeSecret(filepath.Join(dir, "url.txt"), []byte(strings.TrimSpace(u)+"\n"))
 }
 
 func ReadURL() string {
@@ -70,7 +70,7 @@ func ReadURL() string {
 	if err != nil {
 		return ""
 	}
-	b, err := os.ReadFile(filepath.Join(dir, "url.txt"))
+	b, err := readSecret(filepath.Join(dir, "url.txt"))
 	if err != nil {
 		return ""
 	}
@@ -175,7 +175,11 @@ func killXrayProc() {
 func StopXray() {
 	stopWatchdog()
 	RestoreTunRoutes()
+	ReleaseKill()
 	killXrayProc()
+	if lastCfg != "" {
+		_ = os.Remove(lastCfg)
+	}
 	lastServerIP = ""
 }
 
@@ -286,10 +290,16 @@ func startWatchdog() {
 				if lastBin == "" || lastCfg == "" || time.Now().Before(nextTry) {
 					continue
 				}
+				if LoadPrefs().Kill {
+					relaxKill()
+				}
 				killXrayProc()
 				time.Sleep(200 * time.Millisecond)
 				if err := StartXray(lastBin, lastCfg); err != nil || WaitPort(LocalPort, 4*time.Second) != nil {
 					failStreak++
+					if LoadPrefs().Kill {
+						_ = EngageKill(lastBin)
+					}
 					wait := time.Duration(4<<min(failStreak, 4)) * time.Second
 					if wait > 60*time.Second {
 						wait = 60 * time.Second
@@ -298,6 +308,9 @@ func startWatchdog() {
 					continue
 				}
 				failStreak = 0
+				if LoadPrefs().Kill {
+					_ = EngageKill(lastBin)
+				}
 				if runtime.GOOS == "windows" && WaitPlyAdapter(6*time.Second) && lastServerIP != "" {
 					_ = ApplyTunRoutes(lastServerIP)
 				}
@@ -329,7 +342,7 @@ func Connect(source string) (*Session, error) {
 	if err := FindWintun(); err != nil {
 		return nil, err
 	}
-	n, err := Resolve(source)
+	n, _, _, err := ResolveChosen(source, LoadPrefs().Node)
 	if err != nil {
 		return nil, err
 	}
@@ -344,9 +357,6 @@ func Connect(source string) (*Session, error) {
 		return nil, err
 	}
 	cfgPath := filepath.Join(dir, "config.json")
-	if err := os.WriteFile(cfgPath, cfg, 0644); err != nil {
-		return nil, err
-	}
 	xray, err := FindXray()
 	if err != nil {
 		return nil, err
@@ -360,6 +370,9 @@ func Connect(source string) (*Session, error) {
 	}
 	StopXray()
 	time.Sleep(200 * time.Millisecond)
+	if err := os.WriteFile(cfgPath, cfg, 0600); err != nil {
+		return nil, err
+	}
 	if err := StartXray(xray, cfgPath); err != nil {
 		return nil, err
 	}
@@ -371,6 +384,10 @@ func Connect(source string) (*Session, error) {
 		}
 		return nil, fmt.Errorf("%w\n%s", err, tailLog(8))
 	}
+	lastServerIP = ""
+	if ip := net.ParseIP(n.dialAddr()); ip != nil && ip.To4() != nil {
+		lastServerIP = ip.To4().String()
+	}
 	if runtime.GOOS == "windows" {
 		if !WaitPlyAdapter(8 * time.Second) {
 			msg := tunFailed(tailLog(20))
@@ -379,10 +396,6 @@ func Connect(source string) (*Session, error) {
 			}
 			StopXray()
 			return nil, fmt.Errorf("туннель: %s\n%s", msg, tailLog(6))
-		}
-		lastServerIP = ""
-		if ip := net.ParseIP(n.dialAddr()); ip != nil && ip.To4() != nil {
-			lastServerIP = ip.To4().String()
 		}
 		_ = ApplyTunRoutes(lastServerIP)
 		ok := DefaultViaPly()
@@ -399,6 +412,12 @@ func Connect(source string) (*Session, error) {
 	} else if msg := tunFailed(tailLog(20)); msg != "" {
 		StopXray()
 		return nil, fmt.Errorf("туннель: %s", msg)
+	}
+	if LoadPrefs().Kill {
+		if err := EngageKill(xray); err != nil {
+			StopXray()
+			return nil, fmt.Errorf("kill-switch: %w", err)
+		}
 	}
 	_ = SaveURL(source)
 	startWatchdog()

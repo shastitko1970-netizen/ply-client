@@ -35,6 +35,9 @@ type Snapshot struct {
 	Prefs    Prefs      `json:"prefs"`
 	Cores    []CoreSlot `json:"cores,omitempty"`
 	Node     *Node      `json:"node,omitempty"`
+	Nodes    []NodeCard `json:"nodes,omitempty"`
+	NodeID   string     `json:"nodeId,omitempty"`
+	Kill     bool       `json:"kill"`
 	Update   *Update    `json:"update,omitempty"`
 	UpdNote  string     `json:"updNote,omitempty"`
 }
@@ -107,6 +110,7 @@ func setSnap(fn func(*Snapshot)) {
 }
 
 func currentSnap() Snapshot {
+	nodes := currentNodes()
 	daemonMu.Lock()
 	defer daemonMu.Unlock()
 	s := daemonSnap
@@ -117,6 +121,9 @@ func currentSnap() Snapshot {
 	p := LoadPrefs()
 	s.Split = p.Split
 	s.Auto = p.Auto
+	s.Kill = p.Kill
+	s.NodeID = p.Node
+	s.Nodes = nodes
 	s.Prefs = p
 	s.Cores = CoreCatalog()
 	if s.Status == "" {
@@ -142,8 +149,14 @@ func daemonMux(token string) http.Handler {
 		var body struct {
 			URL  string `json:"url"`
 			Auto bool   `json:"auto"`
+			Node string `json:"node"`
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body)
+		if body.Node != "" {
+			p := LoadPrefs()
+			p.Node = body.Node
+			_ = SavePrefs(p)
+		}
 		go daemonConnect(body.URL, body.Auto)
 		writeJSON(w, currentSnap())
 	})
@@ -204,6 +217,9 @@ func daemonMux(token string) http.Handler {
 			return
 		}
 		body.Core = "xray"
+		if body.Node == "" {
+			body.Node = prev.Node
+		}
 		if err := SavePrefs(body); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -211,6 +227,19 @@ func daemonMux(token string) http.Handler {
 		next := LoadPrefs()
 		if next.Auto != prev.Auto || next.Silent != prev.Silent {
 			_ = SetAutoStart(next.Auto, autostartTarget())
+		}
+		if next.Kill != prev.Kill {
+			if next.Kill && currentSnap().Live {
+				if err := EngageKill(""); err != nil {
+					next.Kill = false
+					_ = SavePrefs(next)
+					http.Error(w, err.Error(), 500)
+					return
+				}
+			}
+			if !next.Kill {
+				ReleaseKill()
+			}
 		}
 		setSnap(func(s *Snapshot) {
 			s.Split = next.Split
@@ -229,6 +258,78 @@ func daemonMux(token string) http.Handler {
 		}
 		go daemonConnect(ReadURL(), false)
 		writeJSON(w, currentSnap())
+	})
+	mux.HandleFunc("/v1/nodes", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		var body struct {
+			URL string `json:"url"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body)
+		if _, err := RefreshCatalog(body.URL); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, currentSnap())
+	})
+	mux.HandleFunc("/v1/select", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		var body struct {
+			ID string `json:"id"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+		if strings.TrimSpace(body.ID) == "" {
+			http.Error(w, "нет узла", 400)
+			return
+		}
+		p := LoadPrefs()
+		p.Node = body.ID
+		if err := SavePrefs(p); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if currentSnap().Live {
+			go daemonConnect(ReadURL(), false)
+		}
+		writeJSON(w, currentSnap())
+	})
+	mux.HandleFunc("/v1/kill", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		var body struct {
+			On bool `json:"on"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+		p := LoadPrefs()
+		if body.On && currentSnap().Live {
+			if err := EngageKill(""); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+		}
+		if !body.On {
+			ReleaseKill()
+		}
+		p.Kill = body.On
+		if err := SavePrefs(p); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, currentSnap())
+	})
+	mux.HandleFunc("/v1/log", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		writeJSON(w, map[string]string{"log": tailLog(80)})
 	})
 	mux.HandleFunc("/v1/update/check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost && r.Method != http.MethodGet {
@@ -468,6 +569,9 @@ func StartDaemon() error {
 		Handler:           daemonMux(tok),
 		ReadHeaderTimeout: 4 * time.Second,
 	}
+	p := LoadPrefs()
+	setNodes(cardsFromCatalog())
+	healKill()
 	daemonMu.Lock()
 	daemonSrv = srv
 	daemonTok = tok
@@ -476,8 +580,11 @@ func StartDaemon() error {
 		Version: Version,
 		Admin:   IsAdmin(),
 		Status:  "ожидание",
-		Split:   ReadSplit(),
-		Auto:    true,
+		Split:   p.Split,
+		Auto:    p.Auto,
+		Kill:    p.Kill,
+		NodeID:  p.Node,
+		Prefs:   p,
 		URL:     ReadURL(),
 	}
 	daemonMu.Unlock()

@@ -69,6 +69,41 @@ func TestDaemonSplitRoundtrip(t *testing.T) {
 	}
 }
 
+func TestDaemonNodesAndKill(t *testing.T) {
+	if err := StartDaemon(); err != nil {
+		t.Fatal(err)
+	}
+	defer StopDaemon()
+	d := TryAttach()
+	if d == nil {
+		t.Fatal("attach")
+	}
+	st, err := d.Nodes(paper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Nodes) != 1 || st.Nodes[0].Proto != "vless" || st.Nodes[0].ID == "" {
+		t.Fatalf("%+v", st.Nodes)
+	}
+	st, err = d.Select(st.Nodes[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.NodeID != st.Nodes[0].ID {
+		t.Fatalf("node %s", st.NodeID)
+	}
+	st, err = d.SetKill(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Kill || !st.Prefs.Kill {
+		t.Fatal("kill pref")
+	}
+	if _, err := d.SetKill(false); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDaemonUINoAuth(t *testing.T) {
 	if err := StartDaemon(); err != nil {
 		t.Fatal(err)

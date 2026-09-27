@@ -48,7 +48,7 @@ func CheckLatest() (*Update, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", UA)
+	req.Header.Set("User-Agent", UserAgent())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	cli := &http.Client{Timeout: 12 * time.Second}
 	res, err := cli.Do(req)
@@ -93,7 +93,7 @@ func DownloadSetup(url, dest string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", UA)
+	req.Header.Set("User-Agent", UserAgent())
 	cli := &http.Client{Timeout: 3 * time.Minute}
 	res, err := cli.Do(req)
 	if err != nil {

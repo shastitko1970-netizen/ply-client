@@ -71,6 +71,18 @@ func (d *Daemon) Connect(url string, auto bool) (*Snapshot, error) {
 	return d.do(http.MethodPost, "/v1/connect", map[string]any{"url": url, "auto": auto})
 }
 
+func (d *Daemon) Nodes(url string) (*Snapshot, error) {
+	return d.do(http.MethodPost, "/v1/nodes", map[string]any{"url": url})
+}
+
+func (d *Daemon) Select(id string) (*Snapshot, error) {
+	return d.do(http.MethodPost, "/v1/select", map[string]any{"id": id})
+}
+
+func (d *Daemon) SetKill(on bool) (*Snapshot, error) {
+	return d.do(http.MethodPost, "/v1/kill", map[string]any{"on": on})
+}
+
 func (d *Daemon) Disconnect() (*Snapshot, error) {
 	return d.do(http.MethodPost, "/v1/disconnect", map[string]any{})
 }

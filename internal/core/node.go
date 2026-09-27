@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const UA = "Ply/1.10"
+func UserAgent() string { return "Ply/" + Version }
 
 type Node struct {
 	Proto    string `json:"proto"`
@@ -135,7 +135,7 @@ func FetchSub(sub string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", UA)
+	req.Header.Set("User-Agent", UserAgent())
 	cli := &http.Client{Timeout: 20 * time.Second}
 	res, err := cli.Do(req)
 	if err != nil {
