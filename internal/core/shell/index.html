@@ -56,9 +56,9 @@ html:not([data-os="windows"]) .chrome{display:none}
 .pill{flex-shrink:0;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:500;background:var(--subtle);color:var(--muted);transition:background .2s var(--ease),color .2s var(--ease)}
 .pill.ok{background:rgba(138,163,138,.16);color:var(--ok)}
 .pill.err{background:rgba(193,123,123,.16);color:var(--err)}
-.main{flex:1;min-height:0;margin-top:12px;display:grid;grid-template-columns:4.75rem minmax(0,1fr);gap:14px;align-items:start}
-.hero{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;padding-top:6px}
-.stack{min-width:0;display:flex;flex-direction:column;gap:8px;overflow:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:rgba(244,244,245,.18) transparent}
+.main{flex:1;min-height:0;margin-top:12px;display:grid;grid-template-columns:4.75rem minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:14px;align-items:stretch;overflow:hidden}
+.hero{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;padding-top:6px;align-self:start}
+.stack{min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;gap:8px;overflow-x:hidden;overflow-y:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:rgba(244,244,245,.18) transparent;overscroll-behavior:contain}
 .stack::-webkit-scrollbar{width:6px}
 .stack::-webkit-scrollbar-thumb{background:rgba(244,244,245,.16);border-radius:8px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;animation:rise .28s var(--ease) both}
@@ -102,7 +102,7 @@ details[open] summary::after{content:" скрыть"}
 .btn:hover{opacity:.9}
 .btn:active{transform:scale(.99)}
 .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
-.alert{color:var(--err);font-size:13px;line-height:1.4}
+.alert{margin:8px 0 0;color:var(--err);font-size:13px;line-height:1.4}
 .foot{flex-shrink:0;margin-top:6px;text-align:center;font-size:11px;color:var(--dim)}
 .quiet{margin:2px auto 0;border:0;background:transparent;color:var(--dim);font-size:11px;min-height:26px;transition:color .15s var(--ease)}
 .quiet:hover{color:var(--fg)}
@@ -119,7 +119,7 @@ details[open] summary::after{content:" скрыть"}
 @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (max-width:640px){
-  .main{grid-template-columns:1fr;overflow:auto}
+  .main{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
   .hero{flex-direction:row;align-items:center;gap:14px;padding:0}
   .cap{text-align:left;max-width:none}
   .vals{grid-template-columns:1fr}
@@ -165,6 +165,7 @@ details[open] summary::after{content:" скрыть"}
       <section class="card">
         <div class="k">Ключ</div>
         <input id="url" class="field" spellcheck="false" autocomplete="off" placeholder="vless  hy2  vmess  trojan  ss  или ссылка подписки"/>
+        <p id="err" class="alert" hidden></p>
         <div class="k" style="margin-top:8px">Узел</div>
         <div style="display:flex;gap:6px;margin-top:6px">
           <select id="nodes" class="field" style="margin-top:0"></select>
@@ -246,7 +247,6 @@ details[open] summary::after{content:" скрыть"}
         <pre id="log" class="log" hidden></pre>
         <button id="copylog" class="btn ghost" type="button" style="margin-top:8px" hidden>Скопировать</button>
       </section>
-      <section id="errbox" class="card" hidden><p id="err" class="alert"></p></section>
       <section id="adminbox" class="card" hidden>
         <p class="alert">Нужны права, иначе туннель не встанет.</p>
         <button id="elevate" class="btn" type="button" style="margin-top:8px">Запросить права</button>
@@ -350,7 +350,7 @@ function paint(s){
   const pref = snap.prefs || {};
   $("autosub").textContent = pref.silent !== false ? "тихо, окно не всплывает" : ac[1];
   applyLook(pref);
-  $("errbox").hidden = !err;
+  $("err").hidden = !err;
   $("err").textContent = err;
   $("adminbox").hidden = !!snap.admin || live;
   $("live").hidden = !live;
@@ -415,25 +415,25 @@ $("power").onclick = async () => {
     if (snap.live) await api("/v1/disconnect", {});
     else await api("/v1/connect", {url:$("url").value.trim(), auto:snap.auto !== false, node:$("nodes").value || ""});
     await pull();
-  }catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+  }catch(e){ $("err").hidden=false; $("err").textContent=e.message; }
 };
 $("url").addEventListener("keydown", (e) => { if (e.key === "Enter") $("power").click(); });
 $("split").onclick = async () => { await api("/v1/split", {on: !$("split").classList.contains("on")}); await pull(); };
 $("auto").onclick = async () => { await api("/v1/autostart", {on: !$("auto").classList.contains("on")}); await pull(); };
 $("kill").onclick = async () => {
   try { await api("/v1/kill", {on: !$("kill").classList.contains("on")}); await pull(); }
-  catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+  catch(e){ $("err").hidden=false; $("err").textContent=e.message; }
 };
 $("nodes").onchange = async () => {
   const id = $("nodes").value;
   if (!id) return;
   try { await api("/v1/select", {id}); await pull(); }
-  catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+  catch(e){ $("err").hidden=false; $("err").textContent=e.message; }
 };
 $("nodesrefresh").onclick = async () => {
   $("nodesrefresh").textContent = "…";
   try { await api("/v1/nodes", {url:$("url").value.trim()}); await pull(); }
-  catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+  catch(e){ $("err").hidden=false; $("err").textContent=e.message; }
   $("nodesrefresh").textContent = "список";
 };
 $("subrefresh").onclick = async () => {
@@ -442,7 +442,7 @@ $("subrefresh").onclick = async () => {
     const s = await api("/v1/sub", {url:$("url").value.trim()});
     if (s && s.url) { shownURL = s.url; $("url").value = s.url; }
     paint(s);
-  } catch(e) { $("errbox").hidden=false; $("err").textContent=e.message; }
+  } catch(e) { $("err").hidden=false; $("err").textContent=e.message; }
   $("subrefresh").textContent = "Обновить подписку";
 };
 $("diag").onclick = async () => {
@@ -451,7 +451,7 @@ $("diag").onclick = async () => {
     $("log").hidden = false;
     $("copylog").hidden = false;
     $("log").textContent = (r && r.log) ? r.log : "лог пуст";
-  } catch(e) { $("errbox").hidden=false; $("err").textContent=e.message; }
+  } catch(e) { $("err").hidden=false; $("err").textContent=e.message; }
 };
 $("copylog").onclick = () => copyText($("log").textContent || "");
 function copyText(s){
@@ -500,7 +500,7 @@ function markSeg(id, v){
 async function pushPrefs(patch){
   const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false, kill:!!(snap.prefs && snap.prefs.kill), node:(snap.prefs && snap.prefs.node) || snap.nodeId || ""}, snap.prefs || {}, patch);
   try { paint(await api("/v1/prefs", base)); }
-  catch(e){ $("errbox").hidden=false; $("err").textContent=e.message; }
+  catch(e){ $("err").hidden=false; $("err").textContent=e.message; }
 }
 function toggleLook(){ $("lookbody").hidden = !$("lookbody").hidden; }
 $("gear").onclick = toggleLook;

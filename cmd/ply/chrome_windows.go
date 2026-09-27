@@ -122,6 +122,18 @@ func winDrag(hwnd uintptr) {
 	_, _, _ = procSendMessage.Call(hwnd, wmNCLbuttonDown, htCaption, 0)
 }
 
+func enableHighDPI() {
+	// Без этого Windows растягивает окно как картинку. На масштабе 150% это ровно 144 DPI:
+	// интерфейс мыльный, клики не попадают, низ окна просто отрезан.
+	proc := user32.NewProc("SetProcessDpiAwarenessContext")
+	r, _, _ := proc.Call(^uintptr(3)) // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+	if r != 0 {
+		return
+	}
+	shcore := windows.NewLazySystemDLL("shcore.dll")
+	_, _, _ = shcore.NewProc("SetProcessDpiAwareness").Call(2)
+}
+
 func systemDPI() uint32 {
 	p, _, _ := user32.NewProc("GetDpiForSystem").Call()
 	if p == 0 {

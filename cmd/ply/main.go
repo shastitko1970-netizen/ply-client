@@ -74,8 +74,8 @@ func main() {
 		w := new(app.Window)
 		w.Option(
 			app.Title(core.WindowTitle),
-			app.Size(unit.Dp(800), unit.Dp(540)),
-			app.MinSize(unit.Dp(720), unit.Dp(480)),
+			app.Size(unit.Dp(800), unit.Dp(680)),
+			app.MinSize(unit.Dp(680), unit.Dp(440)),
 			app.Decorated(false),
 		)
 		if err := run(w); err != nil {

@@ -14,6 +14,7 @@ import (
 
 func init() {
 	runtime.LockOSThread()
+	enableHighDPI()
 }
 
 func openWebShell() bool {
@@ -43,9 +44,9 @@ func openWebShell() bool {
 		return nil
 	})
 	w.Init(dragJS)
-	w.SetSize(dip(720), dip(480), webview2.HintMin)
+	w.SetSize(dip(680), dip(440), webview2.HintMin)
 	dressWindow(hwnd)
-	setOuterSize(hwnd, dip(800), dip(540))
+	setOuterSize(hwnd, dip(800), dip(680))
 	w.SetHtml(bootHTML)
 	go func() {
 		d, err := core.EnsureWorker()
@@ -82,7 +83,7 @@ func makeView(data string) webview2.WebView {
 		WindowOptions: webview2.WindowOptions{
 			Title:  core.WindowTitle,
 			Width:  uint(dip(800)),
-			Height: uint(dip(540)),
+			Height: uint(dip(680)),
 			Center: true,
 		},
 	})

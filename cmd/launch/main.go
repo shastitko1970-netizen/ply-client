@@ -51,7 +51,7 @@ func appWindow(page string) *exec.Cmd {
 		data = filepath.Join(os.TempDir(), "ply-chrome")
 	}
 	_ = os.MkdirAll(data, 0755)
-	args := []string{"--app=" + page, "--user-data-dir=" + data, "--window-size=800,540", "--disable-extensions"}
+	args := []string{"--app=" + page, "--user-data-dir=" + data, "--window-size=800,680", "--disable-extensions"}
 	bins := chromeBins()
 	for _, b := range bins {
 		if p, err := exec.LookPath(b); err == nil {
