@@ -14,6 +14,7 @@ func TestHTMLLooksLikeSite(t *testing.T) {
 		"--panel:#121214",
 		"--radius:16px",
 		"РФ напрямую",
+		"Мимо VPN",
 		"Тихий вход",
 		"светлая",
 		"Ключ",

@@ -342,7 +342,7 @@ func TestRenderXrayTunFD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := RenderXrayTun(n, 10808, true, 7, 1400)
+	b, err := RenderXrayTun(n, 10808, true, 7, 1400, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,5 +352,45 @@ func TestRenderXrayTunFD(t *testing.T) {
 	}
 	if strings.Contains(s, "autoSystemRoutingTable") {
 		t.Fatal("android fd should skip host routing")
+	}
+}
+
+func TestBypassProcessesStayDirect(t *testing.T) {
+	n, err := ParseLink(paper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := RenderXray(n, 10808, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(plain), `"process"`) {
+		t.Fatal("empty bypass list must not add a process rule")
+	}
+	b, err := RenderXrayTun(n, 10808, true, -1, 1400, []string{"steam.exe", "self/", `C:\Games\cs2.exe`, "steam.exe", "ply.exe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"process"`) || !strings.Contains(s, "steam.exe") || !strings.Contains(s, "C:/Games/cs2.exe") {
+		t.Fatal(s)
+	}
+	if strings.Contains(s, "self/") || strings.Contains(s, "ply.exe") {
+		t.Fatal("own process must not be bypassed")
+	}
+	for _, need := range []string{`"fakedns"`, `"http"`, `"tls"`, `"metadataOnly": false`, `"routeOnly": false`, "77.88.8.8"} {
+		if !strings.Contains(s, need) {
+			t.Fatalf("bypass must keep the working path, missing %s", need)
+		}
+	}
+	if strings.Contains(s, "quic") || strings.Contains(s, "dns-query") || strings.Contains(s, `"routeOnly": true`) {
+		t.Fatal("bypass must not change sniffing")
+	}
+	route := s[strings.Index(s, `"routing"`):]
+	if strings.Index(route, `"process"`) < strings.Index(route, "198.18.0.0/16") {
+		t.Fatal("process bypass should follow the fake-ip rule")
+	}
+	if strings.Index(route, `"dns-out"`) > strings.Index(route, `"process"`) {
+		t.Fatal("dns hijack stays ahead of the bypass list")
 	}
 }

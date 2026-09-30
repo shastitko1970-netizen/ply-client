@@ -348,7 +348,7 @@ func Connect(source string) (*Session, error) {
 	}
 	n.pinDialIP()
 	split := ReadSplit()
-	cfg, err := RenderXrayTun(n, LocalPort, split, -1, EffectiveMTU())
+	cfg, err := RenderXrayTun(n, LocalPort, split, -1, EffectiveMTU(), LoadPrefs().Bypass)
 	if err != nil {
 		return nil, err
 	}

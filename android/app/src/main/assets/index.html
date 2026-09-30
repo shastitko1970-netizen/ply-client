@@ -33,6 +33,16 @@ body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-are
 .toggle i{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .18s var(--ease)}
 .toggle.on i{transform:translateX(18px);background:#0a0a0b}
 .err{color:var(--err);font-size:13px}
+.pick{margin-top:8px;width:100%;height:42px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--fg);text-align:left;padding:0 12px}
+.sheet{position:fixed;inset:0;background:var(--bg);z-index:5;display:flex;flex-direction:column;padding:calc(12px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom))}
+.sheet[hidden]{display:none}
+.row{display:flex;align-items:center;gap:8px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);text-align:left}
+.row b{display:block;font-weight:500;font-size:14px}
+.row span{display:block;color:var(--dim);font-size:11px}
+.mark{width:22px;height:22px;border-radius:6px;border:1px solid var(--line);flex-shrink:0}
+.row.on .mark{background:var(--accent)}
+.list{flex:1;overflow:auto;margin-top:8px}
+.done{height:40px;border:0;border-radius:12px;background:var(--accent);color:var(--ink);padding:0 14px}
 </style>
 </head>
 <body>
@@ -56,6 +66,9 @@ body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-are
     <div><div class="t">РФ напрямую</div><div class="s">Яндекс, VK и .ru без VPN</div></div>
     <button id="split" class="toggle on" type="button" aria-label="РФ напрямую"><i></i></button>
   </div>
+  <div class="k" style="margin-top:12px">Мимо VPN</div>
+  <button id="openapps" class="pick" type="button">Выбрать приложения</button>
+  <p class="s">Игры и отмеченные программы идут в обход. Сам Ply всегда мимо.</p>
   <div class="k" style="margin-top:12px">Тема</div>
   <div class="seg" id="themes">
     <button type="button" data-v="system">система</button>
@@ -70,8 +83,18 @@ body{padding:calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-are
   </div>
 </div>
 <p class="err" id="err" hidden></p>
+<p class="s" style="text-align:center">Ply 2.1.3</p>
+<div id="sheet" class="sheet" hidden>
+  <div class="head">
+    <div class="brand" style="font-size:22px">Мимо VPN</div>
+    <button id="done" class="done" type="button" style="margin-left:auto">Готово</button>
+  </div>
+  <input id="q" class="field" placeholder="найти игру или приложение" spellcheck="false"/>
+  <div id="list" class="list"></div>
+</div>
 <script>
-let live=false, mtu=1400, nodeId="";
+let live=false, mtu=1400, nodeId="", apps=null;
+let picked=new Set();
 const $ = id => document.getElementById(id);
 function fillNodes(list){
   const sel = $("nodes");
@@ -115,7 +138,44 @@ try{
   const t=localStorage.getItem("ply.theme")||"system"; setTheme(t);
   const m=Number(localStorage.getItem("ply.mtu")||"1400"); if(m===1280||m===1400||m===1500) mtu=m;
   document.querySelectorAll("#mtus button").forEach(b => b.classList.toggle("on", Number(b.dataset.v)===mtu));
+  JSON.parse(localStorage.getItem("ply.bypass")||"[]").forEach(p => picked.add(p));
+  const n = picked.size;
+  $("openapps").textContent = n ? ("Мимо VPN · " + n) : "Выбрать приложения";
 }catch(e){}
+function savePicked(){
+  try{ localStorage.setItem("ply.bypass", JSON.stringify([...picked])); }catch(e){}
+  $("openapps").textContent = picked.size ? ("Мимо VPN · " + picked.size) : "Выбрать приложения";
+}
+function renderList(){
+  const q = $("q").value.trim().toLowerCase();
+  const root = $("list");
+  root.innerHTML = "";
+  (apps||[]).forEach(a => {
+    if (q && (a.label + " " + a.pkg).toLowerCase().indexOf(q) < 0) return;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "row" + (picked.has(a.pkg) ? " on" : "");
+    row.innerHTML = '<div class="mark"></div><div><b></b><span></span></div>';
+    row.querySelector("b").textContent = a.label || a.pkg;
+    row.querySelector("span").textContent = a.pkg;
+    row.onclick = () => {
+      if (picked.has(a.pkg)) picked.delete(a.pkg); else picked.add(a.pkg);
+      savePicked();
+      row.classList.toggle("on", picked.has(a.pkg));
+    };
+    root.appendChild(row);
+  });
+}
+$("openapps").onclick = () => {
+  $("sheet").hidden = false;
+  if (!apps){
+    try{ apps = JSON.parse(PlyNative.listApps() || "[]"); }catch(e){ apps = []; }
+  }
+  renderList();
+};
+$("q").oninput = renderList;
+$("done").onclick = () => { $("sheet").hidden = true; };
+function bypassArg(){ return [...picked].join("\n"); }
 $("split").onclick = () => $("split").classList.toggle("on");
 $("nodes").onchange = () => { nodeId = $("nodes").value; try{ localStorage.setItem("ply.node", nodeId); }catch(e){} };
 $("url").addEventListener("change", loadNodes);
@@ -140,7 +200,7 @@ $("power").onclick = () => {
   $("err").hidden=true;
   try{ localStorage.setItem("ply.url", url); }catch(e){}
   try{
-    PlyNative.connect(url, $("split").classList.contains("on"), mtu, nodeId || $("nodes").value || "");
+    PlyNative.connect(url, $("split").classList.contains("on"), mtu, nodeId || $("nodes").value || "", bypassArg());
     live=true;
     $("power").classList.add("ok");
     $("pill").className="pill ok"; $("pill").textContent="в сети";
@@ -172,7 +232,7 @@ $("subrefresh").onclick = () => {
       if (live) {
         const next = $("url").value.trim();
         try { localStorage.setItem("ply.url", next); } catch (e) {}
-        PlyNative.connect(next, $("split").classList.contains("on"), mtu, nodeId || $("nodes").value || "");
+        PlyNative.connect(next, $("split").classList.contains("on"), mtu, nodeId || $("nodes").value || "", bypassArg());
       }
     }
   } catch (e) {

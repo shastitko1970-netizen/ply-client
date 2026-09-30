@@ -210,7 +210,7 @@ func daemonMux(token string) http.Handler {
 			return
 		}
 		var body Prefs
-		_ = json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&body)
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body)
 		prev := LoadPrefs()
 		if err := UseCore(body.Core); err != nil {
 			http.Error(w, err.Error(), 400)
@@ -246,7 +246,7 @@ func daemonMux(token string) http.Handler {
 			s.Auto = next.Auto
 			s.Prefs = next
 		})
-		if currentSnap().Live && (next.MTU != prev.MTU || next.Split != prev.Split) {
+		if currentSnap().Live && (next.MTU != prev.MTU || next.Split != prev.Split || !sameStrings(next.Bypass, prev.Bypass)) {
 			go daemonConnect(ReadURL(), false)
 		}
 		writeJSON(w, currentSnap())

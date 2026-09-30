@@ -15,6 +15,7 @@ import java.util.ArrayList;
 
 public class PlyVpnService extends VpnService {
     private ParcelFileDescriptor tun;
+    private int tunFd = -1;
     private Process xray;
 
     @Override
@@ -27,11 +28,16 @@ public class PlyVpnService extends VpnService {
         String url = intent != null ? intent.getStringExtra(MainActivity.EXTRA_URL) : "";
         boolean split = intent == null || intent.getBooleanExtra(MainActivity.EXTRA_SPLIT, true);
         int mtu = intent != null ? intent.getIntExtra(MainActivity.EXTRA_MTU, 1400) : 1400;
-        if (mtu != 1280 && mtu != 1400 && mtu != 1500) mtu = 1400;
+        if (mtu != 1200 && mtu != 1280 && mtu != 1400 && mtu != 1500) mtu = 1400;
+        String rawUrl = url == null ? "" : url;
+        if ((rawUrl.contains("hy2://") || rawUrl.contains("hysteria2://")) && mtu > 1200) mtu = 1200;
+        String bypass = intent != null ? intent.getStringExtra(MainActivity.EXTRA_BYPASS) : "";
+        if (bypass == null) bypass = "";
         try {
             stopTunnel();
             File dir = new File(getFilesDir(), "xray");
             dir.mkdirs();
+            freshBins(dir);
             File bin = copyBin(dir, "xray");
             copyAsset("geoip.dat", new File(dir, "geoip.dat"));
             copyAsset("geosite.dat", new File(dir, "geosite.dat"));
@@ -42,23 +48,32 @@ public class PlyVpnService extends VpnService {
             b.addDnsServer("1.1.1.1");
             b.addRoute("0.0.0.0", 1);
             b.addRoute("128.0.0.0", 1);
+            if (Build.VERSION.SDK_INT >= 29) b.setMetered(false);
             try { b.addDisallowedApplication(getPackageName()); } catch (Exception ignored) {}
+            String[] apps = bypass.split("\n");
+            for (int i = 0; i < apps.length; i++) {
+                String pkg = apps[i].trim();
+                if (pkg.length() == 0 || pkg.equals(getPackageName())) continue;
+                try { b.addDisallowedApplication(pkg); } catch (Exception ignored) {}
+            }
             tun = b.establish();
             if (tun == null) {
                 stopSelf();
                 return START_NOT_STICKY;
             }
+            tunFd = tun.detachFd();
             String node = intent != null ? intent.getStringExtra(MainActivity.EXTRA_NODE) : "";
             if (node == null) node = "";
             File cfg = new File(dir, "config.json");
             File plycfg = copyBin(dir, "plycfg");
             ProcessBuilder gen = new ProcessBuilder(
                 plycfg.getAbsolutePath(),
-                "-url", url == null ? "" : url,
+                "-url", rawUrl,
                 "-split=" + (split ? "true" : "false"),
-                "-fd", String.valueOf(tun.getFd()),
+                "-fd", String.valueOf(tunFd),
                 "-mtu", String.valueOf(mtu),
                 "-node", node,
+                "-bypass", bypass,
                 "-out", cfg.getAbsolutePath()
             );
             gen.directory(dir);
@@ -78,7 +93,7 @@ public class PlyVpnService extends VpnService {
             cmd.add(cfg.getAbsolutePath());
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.directory(dir);
-            pb.environment().put("XRAY_TUN_FD", String.valueOf(tun.getFd()));
+            pb.environment().put("XRAY_TUN_FD", String.valueOf(tunFd));
             pb.redirectErrorStream(true);
             xray = pb.start();
         } catch (Exception e) {
@@ -110,6 +125,33 @@ public class PlyVpnService extends VpnService {
         if (tun != null) {
             try { tun.close(); } catch (Exception ignored) {}
             tun = null;
+        }
+        if (tunFd >= 0) {
+            try { ParcelFileDescriptor.adoptFd(tunFd).close(); } catch (Exception ignored) {}
+            tunFd = -1;
+        }
+    }
+
+    private void freshBins(File dir) throws Exception {
+        File stamp = new File(dir, "stamp");
+        String have = "";
+        if (stamp.exists()) {
+            java.io.FileInputStream in = new java.io.FileInputStream(stamp);
+            byte[] buf = new byte[32];
+            int n = in.read(buf);
+            in.close();
+            if (n > 0) have = new String(buf, 0, n, "UTF-8").trim();
+        }
+        if (!"2.1.3".equals(have)) {
+            copyAsset("xray", new File(dir, "xray"));
+            copyAsset("plycfg", new File(dir, "plycfg"));
+            copyAsset("geoip.dat", new File(dir, "geoip.dat"));
+            copyAsset("geosite.dat", new File(dir, "geosite.dat"));
+            FileOutputStream o = new FileOutputStream(stamp);
+            o.write("2.1.3".getBytes("UTF-8"));
+            o.close();
+        } else {
+            copyAsset("plycfg", new File(dir, "plycfg"));
         }
     }
 

@@ -27,7 +27,7 @@ VPN-клиент. Вставила ключ — туннель встал.
 | Linux | `Ply-*-linux-amd64.tar.gz` | `./install.sh` |
 | macOS | `Ply-*-macos.zip` | `install.command` → `/Applications/Ply.app`. Нужен Chrome или Edge |
 
-Android: исходники в [`android/`](android). APK в релиз попадает, только если он собран и приложен отдельно. CI его не собирает: нет Gradle-проекта и нет бинарника Xray под Android в репозитории.
+Android: [`android/`](android) и **Ply-2.1.3.apk** в релизе. На телефоне можно проверить ключ, узлы и приложения мимо VPN. CI сам APK не собирает.
 
 Крестик закрывает окно. Туннель живёт в ядре. Список VPN Windows — не наш.
 
@@ -60,7 +60,7 @@ xray           tun ply0, mixed 127.0.0.1:10808
 
 ```bash
 go test ./internal/core/...
-go build -trimpath -ldflags "-s -w -X ply/internal/core.Version=2.1.2" -o PlyCore ./cmd/worker
+go build -trimpath -ldflags "-s -w -X ply/internal/core.Version=2.1.3" -o PlyCore ./cmd/worker
 ```
 
 Windows-окно: `./cmd/ply`. Linux и macOS-окно: `./cmd/launch` (это бинарь `Ply` в архиве).

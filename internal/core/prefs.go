@@ -15,8 +15,9 @@ type Prefs struct {
 	MTU     int    `json:"mtu"`
 	Split   bool   `json:"split"`
 	Auto    bool   `json:"auto"`
-	Kill    bool   `json:"kill"`
-	Node    string `json:"node"`
+	Kill    bool     `json:"kill"`
+	Node    string   `json:"node"`
+	Bypass  []string `json:"bypass,omitempty"`
 }
 
 func DefaultPrefs() Prefs {
@@ -58,6 +59,7 @@ func NormalizePrefs(p Prefs) Prefs {
 	if p.Core != "xray" {
 		p.Core = "xray"
 	}
+	p.Bypass = NormalizeBypass(p.Bypass)
 	return p
 }
 
@@ -132,6 +134,59 @@ func readSplitFile() bool {
 	s := strings.ToLower(strings.TrimSpace(string(b)))
 	if s == "0" || s == "off" || s == "false" || s == "no" {
 		return false
+	}
+	return true
+}
+
+func NormalizeBypass(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, raw := range in {
+		parts := strings.FieldsFunc(raw, func(r rune) bool {
+			return r == '\n' || r == '\r' || r == ',' || r == ';'
+		})
+		for _, line := range parts {
+			s := strings.TrimSpace(line)
+			s = strings.Trim(s, `"'`)
+			s = strings.ReplaceAll(s, `\`, "/")
+			if s == "" || strings.Contains(s, "..") {
+				continue
+			}
+			low := strings.ToLower(s)
+			switch low {
+			case "self/", "xray/", "xray", "xray.exe", "ply", "ply.exe", "plycore", "plycore.exe":
+				continue
+			}
+			if len(s) > 240 {
+				s = s[:240]
+			}
+			if _, ok := seen[low]; ok {
+				continue
+			}
+			seen[low] = struct{}{}
+			out = append(out, s)
+			if len(out) >= 48 {
+				return out
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
 	}
 	return true
 }

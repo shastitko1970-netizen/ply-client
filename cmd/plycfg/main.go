@@ -17,6 +17,7 @@ func main() {
 	fd := flag.Int("fd", -1, "tun fd (Android)")
 	mtu := flag.Int("mtu", 0, "MTU 1280, 1400 или 1500")
 	node := flag.String("node", "", "id узла")
+	bypass := flag.String("bypass", "", "процессы или пакеты мимо VPN")
 	list := flag.Bool("list", false, "json-список узлов")
 	pull := flag.Bool("pull", false, "обновить подписку и напечатать новый адрес")
 	flag.Parse()
@@ -70,7 +71,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	b, err := core.RenderXrayTun(n, core.LocalPort, *split, *fd, *mtu)
+	b, err := core.RenderXrayTun(n, core.LocalPort, *split, *fd, *mtu, []string{*bypass})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

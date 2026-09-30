@@ -176,10 +176,10 @@ func Resolve(source string) (*Node, error) {
 }
 
 func RenderXray(n *Node, port int, split bool) ([]byte, error) {
-	return RenderXrayTun(n, port, split, -1, 0)
+	return RenderXrayTun(n, port, split, -1, 0, nil)
 }
 
-func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error) {
+func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []string) ([]byte, error) {
 	if mtu == 0 {
 		mtu = EffectiveMTU()
 	}
@@ -199,6 +199,12 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 	rules = append(rules, map[string]any{
 		"type": "field", "inboundTag": []string{"tun", "socks"}, "port": "53", "outboundTag": "dns-out",
 	})
+	bypass = NormalizeBypass(bypass)
+	if len(bypass) > 0 {
+		rules = append(rules, map[string]any{
+			"type": "field", "process": bypass, "outboundTag": "direct",
+		})
+	}
 	if split {
 		rules = append(rules,
 			map[string]any{"type": "field", "domain": RussiaDirectDomains(), "outboundTag": "direct"},
@@ -222,6 +228,12 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int) ([]byte, error
 		}
 	} else {
 		dnsServers = []any{"fakedns"}
+	}
+	if len(bypass) > 0 {
+		dnsServers = append(dnsServers, map[string]any{
+			"address": "1.1.1.1",
+			"detour":  "direct",
+		})
 	}
 	dns := map[string]any{
 		"servers":       dnsServers,

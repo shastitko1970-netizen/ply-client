@@ -75,6 +75,8 @@ html:not([data-os="windows"]) .chrome{display:none}
 .field:focus{border-color:var(--line2);box-shadow:0 0 0 3px rgba(200,204,212,.08)}
 .field::placeholder{color:var(--dim);font-family:"IBM Plex Sans","Segoe UI",sans-serif}
 select.field{font-family:"IBM Plex Sans","Segoe UI",sans-serif}
+.area{margin-top:6px;width:100%;min-height:58px;max-height:110px;border:1px solid var(--line);border-radius:10px;background:var(--field);color:var(--fg);padding:7px 10px;font-size:12px;line-height:1.35;outline:none;resize:vertical;font-family:ui-monospace,Consolas,monospace}
+.area:focus{border-color:var(--line2);box-shadow:0 0 0 3px rgba(200,204,212,.08)}
 pre.log{margin:8px 0 0;max-height:140px;overflow:auto;font-size:11px;line-height:1.35;color:var(--muted);white-space:pre-wrap;word-break:break-word}
 .power{position:relative;width:72px;height:72px;border-radius:50%;border:1px solid var(--line2);background:var(--panel);color:var(--fg);display:grid;place-items:center;transition:transform .18s var(--ease),border-color .18s var(--ease),background .18s var(--ease),color .18s var(--ease),box-shadow .22s var(--ease)}
 .power:hover{border-color:var(--fg);transform:scale(1.05)}
@@ -193,6 +195,9 @@ details[open] summary::after{content:" скрыть"}
           </div>
           <button id="kill" class="toggle" type="button" aria-label="Не выпускать" aria-pressed="false"><i></i></button>
         </div>
+        <div class="k" style="margin-top:4px">Мимо VPN</div>
+        <textarea id="bypass" class="area" spellcheck="false" autocomplete="off" placeholder="steam.exe&#10;cs2.exe"></textarea>
+        <p class="note">Игры и программы из списка идут мимо туннеля. Имя — как в диспетчере задач, .exe можно не писать. Путь через /. На Android отмечаешь приложения в телефоне.</p>
         <p class="note">Список VPN в Windows не наш. Включай кнопкой здесь или пунктом «Включить VPN» у часов. Имя сайта берём из запроса, не из адреса провайдера.</p>
         <div id="live" class="livebox" hidden>
           <div class="chip">
@@ -366,7 +371,8 @@ function paint(s){
     $("ftls").textContent = dash(n.security);
     $("fsni").textContent = dash(n.sni);
     $("fflow").textContent = dash(n.flow);
-    $("route").textContent = snap.split ? "сайты РФ без VPN · остальное через узел" : "весь трафик через узел";
+    const nb = Array.isArray(pref.bypass) ? pref.bypass.length : 0;
+    $("route").textContent = (snap.split ? "сайты РФ без VPN · остальное через узел" : "весь трафик через узел") + (nb ? " · " + nb + " мимо" : "");
   }
   const u = snap.update;
   $("upd").hidden = !u;
@@ -412,6 +418,7 @@ async function pull(){
 $("power").onclick = async () => {
   if (snap.busy) return;
   try{
+    if (!snap.live) await pushBypass();
     if (snap.live) await api("/v1/disconnect", {});
     else await api("/v1/connect", {url:$("url").value.trim(), auto:snap.auto !== false, node:$("nodes").value || ""});
     await pull();
@@ -491,6 +498,11 @@ function applyLook(p){
   markSeg("dens", density);
   markSeg("mtus", String(p.mtu || 1400));
   if ($("silent")) setToggle($("silent"), p.silent !== false);
+  const box = $("bypass");
+  if (box && document.activeElement !== box){
+    const next = Array.isArray(p.bypass) ? p.bypass.join("\n") : "";
+    if (box.value !== next) box.value = next;
+  }
 }
 function markSeg(id, v){
   const root = $(id);
@@ -498,10 +510,20 @@ function markSeg(id, v){
   root.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === String(v)));
 }
 async function pushPrefs(patch){
-  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false, kill:!!(snap.prefs && snap.prefs.kill), node:(snap.prefs && snap.prefs.node) || snap.nodeId || ""}, snap.prefs || {}, patch);
+  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false, kill:!!(snap.prefs && snap.prefs.kill), node:(snap.prefs && snap.prefs.node) || snap.nodeId || "", bypass:(snap.prefs && snap.prefs.bypass) || []}, snap.prefs || {}, patch);
   try { paint(await api("/v1/prefs", base)); }
   catch(e){ $("err").hidden=false; $("err").textContent=e.message; }
 }
+function readBypass(){
+  return $("bypass").value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+}
+async function pushBypass(){
+  const lines = readBypass();
+  const cur = (snap.prefs && snap.prefs.bypass) || [];
+  if (lines.join("\n") === cur.join("\n")) return;
+  await pushPrefs({bypass: lines});
+}
+$("bypass").addEventListener("change", () => { pushBypass(); });
 function toggleLook(){ $("lookbody").hidden = !$("lookbody").hidden; }
 $("gear").onclick = toggleLook;
 $("lookbtn").onclick = toggleLook;

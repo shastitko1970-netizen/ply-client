@@ -2,6 +2,9 @@ package land.ply.vpn;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.Bundle;
@@ -13,17 +16,26 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
     public static final String EXTRA_URL = "land.ply.vpn.URL";
     public static final String EXTRA_SPLIT = "land.ply.vpn.SPLIT";
     public static final String EXTRA_MTU = "land.ply.vpn.MTU";
     public static final String EXTRA_NODE = "land.ply.vpn.NODE";
+    public static final String EXTRA_BYPASS = "land.ply.vpn.BYPASS";
 
     private String pendingUrl = "";
     private boolean pendingSplit = true;
     private int pendingMtu = 1400;
     private String pendingNode = "";
+    private String pendingBypass = "";
+    private String appsJson;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,20 +65,33 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void connect(final String url, final boolean split, final int mtu, final String node) {
+            connect(url, split, mtu, node, "");
+        }
+
+        @JavascriptInterface
+        public void connect(final String url, final boolean split, final int mtu, final String node, final String bypass) {
             runOnUiThread(new Runnable() {
                 @Override public void run() {
                     pendingUrl = url == null ? "" : url;
                     pendingSplit = split;
-                    pendingMtu = mtu == 1280 || mtu == 1500 ? mtu : 1400;
+                    pendingMtu = mtu == 1200 || mtu == 1280 || mtu == 1500 ? mtu : 1400;
                     pendingNode = node == null ? "" : node;
+                    pendingBypass = bypass == null ? "" : bypass;
                     Intent prep = VpnService.prepare(MainActivity.this);
                     if (prep != null) {
                         startActivityForResult(prep, 77);
                     } else {
-                        startVpn(pendingUrl, pendingSplit, pendingMtu, pendingNode);
+                        startVpn();
                     }
                 }
             });
+        }
+
+        @JavascriptInterface
+        public String listApps() {
+            if (appsJson != null) return appsJson;
+            appsJson = loadApps();
+            return appsJson;
         }
 
         @JavascriptInterface
@@ -131,14 +156,48 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void startVpn(String url, boolean split, int mtu, String node) {
+    private void startVpn() {
         Intent run = new Intent(this, PlyVpnService.class);
-        run.putExtra(EXTRA_URL, url);
-        run.putExtra(EXTRA_SPLIT, split);
-        run.putExtra(EXTRA_MTU, mtu);
-        run.putExtra(EXTRA_NODE, node == null ? "" : node);
+        run.putExtra(EXTRA_URL, pendingUrl);
+        run.putExtra(EXTRA_SPLIT, pendingSplit);
+        run.putExtra(EXTRA_MTU, pendingMtu);
+        run.putExtra(EXTRA_NODE, pendingNode == null ? "" : pendingNode);
+        run.putExtra(EXTRA_BYPASS, pendingBypass == null ? "" : pendingBypass);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(run);
         else startService(run);
+    }
+
+    private String loadApps() {
+        try {
+            PackageManager pm = getPackageManager();
+            Intent main = new Intent(Intent.ACTION_MAIN);
+            main.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> infos = pm.queryIntentActivities(main, 0);
+            ArrayList<JSONObject> rows = new ArrayList<JSONObject>();
+            ArrayList<String> seen = new ArrayList<String>();
+            String self = getPackageName();
+            for (int i = 0; i < infos.size(); i++) {
+                ApplicationInfo ai = infos.get(i).activityInfo.applicationInfo;
+                if (ai == null || self.equals(ai.packageName)) continue;
+                if (seen.contains(ai.packageName)) continue;
+                seen.add(ai.packageName);
+                CharSequence label = ai.loadLabel(pm);
+                JSONObject o = new JSONObject();
+                o.put("pkg", ai.packageName);
+                o.put("label", label == null ? ai.packageName : label.toString());
+                rows.add(o);
+            }
+            Collections.sort(rows, new Comparator<JSONObject>() {
+                @Override public int compare(JSONObject a, JSONObject b) {
+                    return a.optString("label").compareToIgnoreCase(b.optString("label"));
+                }
+            });
+            JSONArray arr = new JSONArray();
+            for (int i = 0; i < rows.size(); i++) arr.put(rows.get(i));
+            return arr.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
     }
 
     private File ensureBin(String name) throws Exception {
@@ -176,7 +235,7 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == 77 && resultCode == RESULT_OK) {
-            startVpn(pendingUrl, pendingSplit, pendingMtu, pendingNode);
+            startVpn();
         }
     }
 }
