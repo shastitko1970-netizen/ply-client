@@ -195,16 +195,24 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []strin
 	// Пул FakeDNS не «частная сеть». Иначе geoip:private утащит его мимо туннеля.
 	rules = append(rules, map[string]any{"type": "field", "ip": []string{"198.18.0.0/16"}, "outboundTag": "proxy"})
 	rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"})
-	// Только из tun/socks. Иначе запрос самого DNS-модуля снова попадёт в dns-out.
-	rules = append(rules, map[string]any{
-		"type": "field", "inboundTag": []string{"tun", "socks"}, "port": "53", "outboundTag": "dns-out",
-	})
+	// Имя процесса — до перехвата порта 53. Иначе запрос игры отвечает fakedns,
+	// правило 198.18 уводит её в туннель, и список «мимо» ничего не меняет.
+	// Фейковый пул остаётся выше: чужой кэш 198.18 не уходит в никуда.
+	// На Android пакет режет VpnService. process при routeOnly=false там не
+	// находится и только добавляет всем второй DNS.
 	bypass = NormalizeBypass(bypass)
+	if tunFD >= 0 {
+		bypass = nil
+	}
 	if len(bypass) > 0 {
 		rules = append(rules, map[string]any{
 			"type": "field", "process": bypass, "outboundTag": "direct",
 		})
 	}
+	// Только из tun/socks. Иначе запрос самого DNS-модуля снова попадёт в dns-out.
+	rules = append(rules, map[string]any{
+		"type": "field", "inboundTag": []string{"tun", "socks"}, "port": "53", "outboundTag": "dns-out",
+	})
 	if split {
 		rules = append(rules,
 			map[string]any{"type": "field", "domain": RussiaDirectDomains(), "outboundTag": "direct"},
@@ -230,9 +238,12 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []strin
 		dnsServers = []any{"fakedns"}
 	}
 	if len(bypass) > 0 {
+		// Браузеру по-прежнему отвечает fakedns: у этого сервера нет domains,
+		// он запасной. Прямому выходу имя из запроса надо превратить в живой
+		// адрес. DoH идёт через узел, UDP/53 к провайдеру не выпускаем.
 		dnsServers = append(dnsServers, map[string]any{
-			"address": "1.1.1.1",
-			"detour":  "direct",
+			"address": "https://1.1.1.1/dns-query",
+			"detour":  "proxy",
 		})
 	}
 	dns := map[string]any{

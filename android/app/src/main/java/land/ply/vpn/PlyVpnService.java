@@ -142,13 +142,13 @@ public class PlyVpnService extends VpnService {
             in.close();
             if (n > 0) have = new String(buf, 0, n, "UTF-8").trim();
         }
-        if (!"2.1.3".equals(have)) {
+        if (!"2.1.4".equals(have)) {
             copyAsset("xray", new File(dir, "xray"));
             copyAsset("plycfg", new File(dir, "plycfg"));
             copyAsset("geoip.dat", new File(dir, "geoip.dat"));
             copyAsset("geosite.dat", new File(dir, "geosite.dat"));
             FileOutputStream o = new FileOutputStream(stamp);
-            o.write("2.1.3".getBytes("UTF-8"));
+            o.write("2.1.4".getBytes("UTF-8"));
             o.close();
         } else {
             copyAsset("plycfg", new File(dir, "plycfg"));

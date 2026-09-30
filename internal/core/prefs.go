@@ -160,6 +160,9 @@ func NormalizeBypass(in []string) []string {
 			case "self/", "xray/", "xray", "xray.exe", "ply", "ply.exe", "plycore", "plycore.exe":
 				continue
 			}
+			if !strings.Contains(s, "/") {
+				s = low
+			}
 			if len(s) > 240 {
 				s = s[:240]
 			}

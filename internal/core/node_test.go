@@ -353,6 +353,13 @@ func TestRenderXrayTunFD(t *testing.T) {
 	if strings.Contains(s, "autoSystemRoutingTable") {
 		t.Fatal("android fd should skip host routing")
 	}
+	withBypass, err := RenderXrayTun(n, 10808, true, 7, 1400, []string{"com.valvesoftware.android.steam.community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(withBypass), `"process"`) || strings.Contains(string(withBypass), "dns-query") {
+		t.Fatal("android exclusion is VpnService, not an xray process rule")
+	}
 }
 
 func TestBypassProcessesStayDirect(t *testing.T) {
@@ -367,7 +374,7 @@ func TestBypassProcessesStayDirect(t *testing.T) {
 	if strings.Contains(string(plain), `"process"`) {
 		t.Fatal("empty bypass list must not add a process rule")
 	}
-	b, err := RenderXrayTun(n, 10808, true, -1, 1400, []string{"steam.exe", "self/", `C:\Games\cs2.exe`, "steam.exe", "ply.exe"})
+	b, err := RenderXrayTun(n, 10808, true, -1, 1400, []string{"Steam.EXE", "self/", `C:\Games\cs2.exe`, "steam.exe", "ply.exe"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,22 +382,26 @@ func TestBypassProcessesStayDirect(t *testing.T) {
 	if !strings.Contains(s, `"process"`) || !strings.Contains(s, "steam.exe") || !strings.Contains(s, "C:/Games/cs2.exe") {
 		t.Fatal(s)
 	}
-	if strings.Contains(s, "self/") || strings.Contains(s, "ply.exe") {
-		t.Fatal("own process must not be bypassed")
+	if strings.Contains(s, "Steam.EXE") || strings.Contains(s, "self/") || strings.Contains(s, "ply.exe") {
+		t.Fatal("own process must not be bypassed, bare name is lowercase")
 	}
-	for _, need := range []string{`"fakedns"`, `"http"`, `"tls"`, `"metadataOnly": false`, `"routeOnly": false`, "77.88.8.8"} {
+	for _, need := range []string{`"fakedns"`, `"http"`, `"tls"`, `"metadataOnly": false`, `"routeOnly": false`, "77.88.8.8", "https://1.1.1.1/dns-query", `"detour": "proxy"`} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("bypass must keep the working path, missing %s", need)
 		}
 	}
-	if strings.Contains(s, "quic") || strings.Contains(s, "dns-query") || strings.Contains(s, `"routeOnly": true`) {
+	if strings.Contains(s, "quic") || strings.Contains(s, `"routeOnly": true`) {
 		t.Fatal("bypass must not change sniffing")
+	}
+	doh := strings.Index(s, "https://1.1.1.1/dns-query")
+	if doh < 0 || strings.Contains(s[doh:doh+90], `"direct"`) {
+		t.Fatal("re-resolve must not ask the ISP")
 	}
 	route := s[strings.Index(s, `"routing"`):]
 	if strings.Index(route, `"process"`) < strings.Index(route, "198.18.0.0/16") {
-		t.Fatal("process bypass should follow the fake-ip rule")
+		t.Fatal("fake-ip stays ahead of the bypass list")
 	}
-	if strings.Index(route, `"dns-out"`) > strings.Index(route, `"process"`) {
-		t.Fatal("dns hijack stays ahead of the bypass list")
+	if strings.Index(route, `"process"`) > strings.Index(route, `"dns-out"`) {
+		t.Fatal("bypass must be ahead of dns hijack, or the game gets a fake address")
 	}
 }
