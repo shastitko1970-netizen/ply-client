@@ -30,6 +30,7 @@ var (
 	lastCfg      string
 	lastBin      string
 	lastServerIP string
+	lastProxy    bool
 )
 
 func AppDir() (string, error) {
@@ -181,6 +182,7 @@ func StopXray() {
 		_ = os.Remove(lastCfg)
 	}
 	lastServerIP = ""
+	lastProxy = false
 }
 
 func PortOpen(port int) bool {
@@ -276,13 +278,13 @@ func startWatchdog() {
 				return
 			case <-t.C:
 				alive := PortOpen(LocalPort)
-				if runtime.GOOS == "windows" {
+				if runtime.GOOS == "windows" && !lastProxy {
 					alive = alive && PlyAdapterUp()
 				}
 				if alive {
 					failStreak = 0
 					routeTick++
-					if runtime.GOOS == "windows" && lastServerIP != "" && !DefaultViaPly() && routeTick%3 == 0 {
+					if !lastProxy && runtime.GOOS == "windows" && lastServerIP != "" && !DefaultViaPly() && routeTick%3 == 0 {
 						_ = ApplyTunRoutes(lastServerIP)
 					}
 					continue
@@ -290,14 +292,14 @@ func startWatchdog() {
 				if lastBin == "" || lastCfg == "" || time.Now().Before(nextTry) {
 					continue
 				}
-				if LoadPrefs().Kill {
+				if LoadPrefs().Kill && !lastProxy {
 					relaxKill()
 				}
 				killXrayProc()
 				time.Sleep(200 * time.Millisecond)
 				if err := StartXray(lastBin, lastCfg); err != nil || WaitPort(LocalPort, 4*time.Second) != nil {
 					failStreak++
-					if LoadPrefs().Kill {
+					if LoadPrefs().Kill && !lastProxy {
 						_ = EngageKill(lastBin)
 					}
 					wait := time.Duration(4<<min(failStreak, 4)) * time.Second
@@ -308,8 +310,12 @@ func startWatchdog() {
 					continue
 				}
 				failStreak = 0
-				if LoadPrefs().Kill {
+				if LoadPrefs().Kill && !lastProxy {
 					_ = EngageKill(lastBin)
+				}
+				if lastProxy {
+					_ = SetWinProxy(localProxySpec(), true)
+					continue
 				}
 				if runtime.GOOS == "windows" && WaitPlyAdapter(6*time.Second) && lastServerIP != "" {
 					_ = ApplyTunRoutes(lastServerIP)
@@ -335,12 +341,26 @@ func stopWatchdog() {
 	}
 }
 
-func Connect(source string) (*Session, error) {
-	if runtime.GOOS == "windows" && !IsAdmin() {
-		return nil, fmt.Errorf("для туннеля нужны права администратора")
+func localProxySpec() string {
+	return "127.0.0.1:" + strconv.Itoa(LocalPort)
+}
+
+func proxyExitWanted() bool {
+	if runtime.GOOS == "android" {
+		return false
 	}
-	if err := FindWintun(); err != nil {
-		return nil, err
+	return LoadPrefs().Exit == "proxy"
+}
+
+func Connect(source string) (*Session, error) {
+	proxyMode := proxyExitWanted()
+	if !proxyMode {
+		if runtime.GOOS == "windows" && !IsAdmin() {
+			return nil, fmt.Errorf("для туннеля нужны права администратора")
+		}
+		if err := FindWintun(); err != nil {
+			return nil, err
+		}
 	}
 	n, _, _, err := ResolveChosen(source, LoadPrefs().Node)
 	if err != nil {
@@ -348,7 +368,7 @@ func Connect(source string) (*Session, error) {
 	}
 	n.pinDialIP()
 	split := ReadSplit()
-	cfg, err := RenderXrayTun(n, LocalPort, split, -1, EffectiveMTU(), LoadPrefs().Bypass)
+	cfg, err := RenderXrayTun(n, LocalPort, split, -1, EffectiveMTU(), LoadPrefs().Bypass, proxyMode)
 	if err != nil {
 		return nil, err
 	}
@@ -380,13 +400,31 @@ func Connect(source string) (*Session, error) {
 		msg := tunFailed(tailLog(12))
 		StopXray()
 		if msg != "" {
-			return nil, fmt.Errorf("туннель: %s", msg)
+			return nil, fmt.Errorf("ядро: %s", msg)
 		}
 		return nil, fmt.Errorf("%w\n%s", err, tailLog(8))
 	}
 	lastServerIP = ""
 	if ip := net.ParseIP(n.dialAddr()); ip != nil && ip.To4() != nil {
 		lastServerIP = ip.To4().String()
+	}
+	if proxyMode {
+		if err := SetWinProxy(localProxySpec(), true); err != nil {
+			StopXray()
+			return nil, fmt.Errorf("системный прокси: %w", err)
+		}
+		ReleaseKill()
+		lastProxy = true
+		if !isHTTPSource(CleanSource(source)) {
+			_ = SaveURL(source)
+		}
+		startWatchdog()
+		note := "Прокси включён. Браузер через узел, туннель не поднимался."
+		if split {
+			note = "Прокси включён. Сайты РФ напрямую, остальное через узел."
+		}
+		TrayBalloon("Ply", note)
+		return &Session{Node: n, ExitIP: "", Split: split}, nil
 	}
 	if runtime.GOOS == "windows" {
 		if !WaitPlyAdapter(8 * time.Second) {
@@ -434,8 +472,9 @@ func Connect(source string) (*Session, error) {
 }
 
 func Disconnect() error {
+	wasProxy := lastProxy
 	StopXray()
-	if runtime.GOOS == "windows" {
+	if wasProxy || runtime.GOOS == "windows" {
 		return SetWinProxy("", false)
 	}
 	return nil

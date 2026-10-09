@@ -71,7 +71,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	b, err := core.RenderXrayTun(n, core.LocalPort, *split, *fd, *mtu, []string{*bypass})
+	b, err := core.RenderXrayTun(n, core.LocalPort, *split, *fd, *mtu, []string{*bypass}, false)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

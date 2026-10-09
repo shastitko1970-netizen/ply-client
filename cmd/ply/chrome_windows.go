@@ -3,6 +3,7 @@
 package main
 
 import (
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -118,8 +119,13 @@ func winDrag(hwnd uintptr) {
 	if hwnd == 0 {
 		return
 	}
-	_, _, _ = procReleaseCap.Call()
-	_, _, _ = procSendMessage.Call(hwnd, wmNCLbuttonDown, htCaption, 0)
+	// SendMessage из mousedown WebView2 крутит модальный цикл внутри клика,
+	// и окно не едет за курсором. Команда должна уйти, когда обработчик уже вернулся.
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		_, _, _ = procReleaseCap.Call()
+		_, _, _ = procPostMessage.Call(hwnd, wmSysCommand, scMove|htCaption, 0)
+	}()
 }
 
 func enableHighDPI() {

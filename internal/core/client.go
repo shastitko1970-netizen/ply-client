@@ -112,6 +112,11 @@ func (d *Daemon) Quit() error {
 	return err
 }
 
+func (d *Daemon) YieldTray() error {
+	_, err := d.do(http.MethodPost, "/v1/tray", map[string]any{"yield": true})
+	return err
+}
+
 func (d *Daemon) ShellURL() string {
 	return d.base + "/ui?t=" + url.QueryEscape(d.token)
 }

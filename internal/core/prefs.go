@@ -8,16 +8,17 @@ import (
 )
 
 type Prefs struct {
-	Theme   string `json:"theme"`
-	Density string `json:"density"`
-	Silent  bool   `json:"silent"`
-	Core    string `json:"core"`
-	MTU     int    `json:"mtu"`
-	Split   bool   `json:"split"`
-	Auto    bool   `json:"auto"`
+	Theme   string   `json:"theme"`
+	Density string   `json:"density"`
+	Silent  bool     `json:"silent"`
+	Core    string   `json:"core"`
+	MTU     int      `json:"mtu"`
+	Split   bool     `json:"split"`
+	Auto    bool     `json:"auto"`
 	Kill    bool     `json:"kill"`
 	Node    string   `json:"node"`
 	Bypass  []string `json:"bypass,omitempty"`
+	Exit    string   `json:"exit,omitempty"`
 }
 
 func DefaultPrefs() Prefs {
@@ -59,6 +60,9 @@ func NormalizePrefs(p Prefs) Prefs {
 	if p.Core != "xray" {
 		p.Core = "xray"
 	}
+	if p.Exit != "proxy" {
+		p.Exit = "tun"
+	}
 	p.Bypass = NormalizeBypass(p.Bypass)
 	return p
 }
@@ -85,7 +89,7 @@ func LoadPrefs() Prefs {
 	}
 	p := DefaultPrefs()
 	p.Split = readSplitFile()
-	return p
+	return NormalizePrefs(p)
 }
 
 func SavePrefs(p Prefs) error {

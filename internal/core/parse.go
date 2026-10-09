@@ -37,7 +37,9 @@ func isShare(s string) bool {
 		strings.HasPrefix(s, "trojan://") ||
 		strings.HasPrefix(s, "ss://") ||
 		strings.HasPrefix(s, "hysteria2://") ||
-		strings.HasPrefix(s, "hy2://")
+		strings.HasPrefix(s, "hy2://") ||
+		strings.HasPrefix(s, "socks5://") ||
+		strings.HasPrefix(s, "socks://")
 }
 
 func rejectUnsupported(s string) error {
@@ -48,7 +50,9 @@ func rejectUnsupported(s string) error {
 	case strings.HasPrefix(low, "tuic://"):
 		return fmt.Errorf("TUIC Xray не умеет — вставь hy2, vless, vmess, trojan или ss")
 	case strings.HasPrefix(low, "wireguard://"), strings.HasPrefix(low, "wg://"):
-		return fmt.Errorf("WireGuard пока не разбираю — вставь vless, vmess, trojan, ss или hy2")
+		return fmt.Errorf("WireGuard пока не разбираю — вставь vless, vmess, trojan, ss, hy2 или socks5")
+	case strings.HasPrefix(low, "socks4://"):
+		return fmt.Errorf("SOCKS4 не беру — нужен socks5://логин:пароль@хост:порт")
 	}
 	return nil
 }
@@ -141,7 +145,7 @@ func FirstShareLine(body string) (string, error) {
 	if unsupported != nil {
 		return "", unsupported
 	}
-	return "", fmt.Errorf("в ответе нет ключа vless/vmess/trojan/ss/hy2")
+	return "", fmt.Errorf("в ответе нет ключа vless/vmess/trojan/ss/hy2/socks5")
 }
 
 func FirstVLESS(body string) (string, error) {
@@ -165,9 +169,40 @@ func ParseLink(raw string) (*Node, error) {
 		return ParseSS(raw)
 	case strings.HasPrefix(low, "hysteria2://"), strings.HasPrefix(low, "hy2://"):
 		return ParseHysteria(raw)
+	case strings.HasPrefix(low, "socks5://"), strings.HasPrefix(low, "socks://"):
+		return ParseSocks(raw)
 	default:
 		return nil, fmt.Errorf("не ключ")
 	}
+}
+
+func ParseSocks(raw string) (*Node, error) {
+	body, remark := splitRemark(raw)
+	u, err := url.Parse(body)
+	if err != nil {
+		return nil, fmt.Errorf("разобрать socks5: %w", err)
+	}
+	host := u.Hostname()
+	port := portOf(u, 0)
+	if host == "" || port == 0 {
+		return nil, fmt.Errorf("в socks5 нужен хост и порт: socks5://логин:пароль@хост:порт")
+	}
+	user, pass := "", ""
+	if u.User != nil {
+		user = u.User.Username()
+		pass, _ = u.User.Password()
+	}
+	if remark == "" {
+		remark = "socks5"
+	}
+	return &Node{
+		Proto:    "socks",
+		User:     user,
+		Password: pass,
+		Host:     host,
+		Port:     port,
+		Remark:   remark,
+	}, nil
 }
 
 func ParseVLESS(raw string) (*Node, error) {

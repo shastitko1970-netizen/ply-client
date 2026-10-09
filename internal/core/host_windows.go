@@ -49,7 +49,7 @@ func hostWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	return r
 }
 
-func RunHost(hooks TrayHooks) {
+func createHostWindow(messageOnly bool) windows.HWND {
 	hInst, _, _ := procGetModuleHandle.Call(0)
 	clsName, _ := windows.UTF16PtrFromString("PlyCoreHost")
 	wc := wndClassEx{
@@ -66,19 +66,39 @@ func RunHost(hooks TrayHooks) {
 		wsExNoact    = 0x08000000
 		wsPopup      = 0x80000000
 		cwUseDefault = 0x80000000
+		hwndMessage  = ^uintptr(2) // HWND_MESSAGE, -3
 	)
+	ex := uintptr(0)
+	style := uintptr(0)
+	parent := uintptr(0)
+	w, h := uintptr(0), uintptr(0)
+	if messageOnly {
+		parent = hwndMessage
+	} else {
+		ex = wsExTool | wsExNoact
+		style = wsPopup
+	}
 	hwndU, _, _ := procCreateWindow.Call(
-		wsExTool|wsExNoact,
+		ex,
 		uintptr(unsafe.Pointer(clsName)),
 		uintptr(unsafe.Pointer(title)),
-		wsPopup,
-		cwUseDefault, cwUseDefault, 0, 0,
-		0, 0, hInst, 0,
+		style,
+		cwUseDefault, cwUseDefault, w, h,
+		parent, 0, hInst, 0,
 	)
-	hwnd := windows.HWND(hwndU)
-	if hwnd != 0 {
-		AttachTrayTo(hwnd, hooks)
+	return windows.HWND(hwndU)
+}
+
+func RunHost(hooks TrayHooks) {
+	hwnd := createHostWindow(true)
+	if hwnd == 0 || !AttachTrayTo(hwnd, hooks) {
+		RemoveTray()
+		hwnd = createHostWindow(false)
+		if hwnd != 0 {
+			AttachTrayTo(hwnd, hooks)
+		}
 	}
+	hostHWND = hwnd
 	var m winMsg
 	for {
 		r, _, _ := procGetMessage.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)

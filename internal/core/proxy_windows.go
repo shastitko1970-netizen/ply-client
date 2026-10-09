@@ -3,6 +3,7 @@
 package core
 
 import (
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/windows/registry"
@@ -19,7 +20,13 @@ func SetWinProxy(server string, enable bool) error {
 	}
 	defer k.Close()
 	if enable {
+		if server != "" && !strings.Contains(server, "=") {
+			server = "http=" + server + ";https=" + server + ";socks=" + server
+		}
 		if err := k.SetStringValue("ProxyServer", server); err != nil {
+			return err
+		}
+		if err := k.SetStringValue("ProxyOverride", "<local>"); err != nil {
 			return err
 		}
 		if err := k.SetDWordValue("ProxyEnable", 1); err != nil {

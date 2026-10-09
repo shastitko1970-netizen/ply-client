@@ -49,6 +49,14 @@ button:disabled{cursor:default;opacity:.45}
 .chrome .btns button:hover{background:var(--subtle);color:var(--fg)}
 .chrome .btns .x:hover{background:#6b3a3a;color:#fff}
 html:not([data-os="windows"]) .chrome{display:none}
+.sheet{position:fixed;inset:0;z-index:30;background:rgba(10,10,11,.62);display:flex;align-items:flex-end;justify-content:center}
+.sheet[hidden]{display:none}
+.sheet .box{width:min(520px,100%);max-height:min(520px,86%);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px 16px 0 0;padding:12px 14px 16px}
+.prow{display:block;width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--fg);padding:8px 0}
+.prow b{display:block;font-weight:500;font-size:13px}
+.prow span{display:block;color:var(--dim);font-size:11px;word-break:break-all}
+.prow.on b{color:var(--ok)}
+.hrow{display:flex;align-items:center;gap:8px}
 .wrap{height:100%;display:flex;flex-direction:column;overflow:hidden}
 .body{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 16px 10px}
 .head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0}
@@ -166,8 +174,15 @@ details[open] summary::after{content:" скрыть"}
     <div class="stack">
       <section class="card">
         <div class="k">Ключ</div>
-        <input id="url" class="field" spellcheck="false" autocomplete="off" placeholder="vless  hy2  vmess  trojan  ss  или ссылка подписки"/>
-        <p id="err" class="alert" hidden></p>
+        <input id="url" class="field" spellcheck="false" autocomplete="off" placeholder="socks5  vless  hy2  vmess  trojan  ss  или ссылка подписки"/>
+        <div id="exitbox">
+          <div class="k" style="margin-top:8px">Как пускать</div>
+          <div class="seg" id="exits">
+            <button type="button" data-v="tun">туннель</button>
+            <button type="button" data-v="proxy">прокси</button>
+          </div>
+          <p class="note">Туннель забирает весь трафик, нужны права. Прокси — браузер и то, что слушается системного прокси; игры туда не идут. На телефоне всегда туннель, socks5 там тоже ключ узла. «Не выпускать» только у туннеля.</p>
+        </div>
         <div class="k" style="margin-top:8px">Узел</div>
         <div style="display:flex;gap:6px;margin-top:6px">
           <select id="nodes" class="field" style="margin-top:0"></select>
@@ -195,9 +210,13 @@ details[open] summary::after{content:" скрыть"}
           </div>
           <button id="kill" class="toggle" type="button" aria-label="Не выпускать" aria-pressed="false"><i></i></button>
         </div>
-        <div class="k" style="margin-top:4px">Мимо VPN</div>
-        <textarea id="bypass" class="area" spellcheck="false" autocomplete="off" placeholder="steam.exe&#10;cs2.exe"></textarea>
-        <p class="note">Игры и программы из списка идут мимо туннеля, вместе со своим DNS. Имя файла как в диспетчере задач, .exe можно не писать. Путь через /. «Не выпускать» их тоже режет. На Android отмечаешь приложения в телефоне.</p>
+        <p id="err" class="alert" hidden></p>
+        <div class="hrow" style="margin-top:4px">
+          <div class="k">Мимо VPN</div>
+          <button id="pick" class="btn ghost" type="button" style="width:auto;margin-left:auto;padding:0 10px;height:28px">выбрать</button>
+        </div>
+        <textarea id="bypass" class="area" spellcheck="false" autocomplete="off" placeholder="steam.exe&#10;C:/Program Files/HoYoPlay/"></textarea>
+        <p class="note">Игры и программы из списка идут мимо туннеля, вместе со своим DNS. «Выбрать» — запущенные и установленные. Папка с / в конце закрывает все процессы внутри: HoYoPlay одной строкой, а не каждый exe. «Не выпускать» их тоже режет. На Android отмечаешь приложения в телефоне.</p>
         <p class="note">Список VPN в Windows не наш. Включай кнопкой здесь или пунктом «Включить VPN» у часов. Имя сайта берём из запроса, не из адреса провайдера.</p>
         <div id="live" class="livebox" hidden>
           <div class="chip">
@@ -267,6 +286,16 @@ details[open] summary::after{content:" скрыть"}
     <button id="check" class="quiet" type="button">проверить обновления</button>
     <button id="quit" class="quiet" type="button" hidden>выйти из ядра</button>
   </footer>
+  </div>
+</div>
+<div id="sheet" class="sheet" hidden>
+  <div class="box">
+    <div class="hrow">
+      <div class="k">Мимо туннеля</div>
+      <button id="sheetx" class="btn ghost" type="button" style="width:auto;margin-left:auto;padding:0 10px;height:28px">закрыть</button>
+    </div>
+    <input id="pq" class="field" placeholder="поиск, например HoYo" spellcheck="false" autocomplete="off"/>
+    <div id="plist"></div>
   </div>
 </div>
 <script>
@@ -343,7 +372,7 @@ function paint(s){
   } else if (!snap.busy){
     p.innerHTML = ICON + (live ? '<span class="ring"></span>' : "");
   }
-  $("cap").textContent = !snap.admin ? "нужны права" : snap.busy ? "поднимаю…" : live ? "выключить" : "Вставь ключ";
+  $("cap").textContent = (!snap.admin && !((snap.prefs || {}).exit === "proxy")) ? "нужны права" : snap.busy ? "поднимаю…" : live ? "выключить" : "Вставь ключ";
   if (snap.url && ($("url").value === "" || $("url").value === shownURL)) $("url").value = snap.url;
   if (snap.url) shownURL = snap.url;
   setToggle($("split"), !!snap.split);
@@ -353,11 +382,13 @@ function paint(s){
   const ac = autoCopy(plat);
   $("autolbl").textContent = ac[0];
   const pref = snap.prefs || {};
+  $("kill").disabled = pref.exit === "proxy" && plat !== "android";
   $("autosub").textContent = pref.silent !== false ? "тихо, окно не всплывает" : ac[1];
   applyLook(pref);
   $("err").hidden = !err;
   $("err").textContent = err;
-  $("adminbox").hidden = !!snap.admin || live;
+  $("adminbox").hidden = !!snap.admin || live || (pref.exit === "proxy" && plat !== "android");
+  if ($("exitbox")) $("exitbox").hidden = plat === "android";
   $("live").hidden = !live;
   $("quit").hidden = plat === "windows" || plat === "android" || !plat;
   if (live){
@@ -372,7 +403,9 @@ function paint(s){
     $("fsni").textContent = dash(n.sni);
     $("fflow").textContent = dash(n.flow);
     const nb = Array.isArray(pref.bypass) ? pref.bypass.length : 0;
-    $("route").textContent = (snap.split ? "сайты РФ без VPN · остальное через узел" : "весь трафик через узел") + (nb ? " · " + nb + " мимо" : "");
+    let route = snap.split ? "сайты РФ без VPN · остальное через узел" : "весь трафик через узел";
+    if (pref.exit === "proxy" && plat !== "android") route = "системный прокси · туннель не поднят";
+    $("route").textContent = route + (nb ? " · " + nb + " мимо" : "");
   }
   const u = snap.update;
   $("upd").hidden = !u;
@@ -497,6 +530,7 @@ function applyLook(p){
   markSeg("themes", theme);
   markSeg("dens", density);
   markSeg("mtus", String(p.mtu || 1400));
+  markSeg("exits", p.exit === "proxy" ? "proxy" : "tun");
   if ($("silent")) setToggle($("silent"), p.silent !== false);
   const box = $("bypass");
   if (box && document.activeElement !== box){
@@ -510,7 +544,7 @@ function markSeg(id, v){
   root.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === String(v)));
 }
 async function pushPrefs(patch){
-  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false, kill:!!(snap.prefs && snap.prefs.kill), node:(snap.prefs && snap.prefs.node) || snap.nodeId || "", bypass:(snap.prefs && snap.prefs.bypass) || []}, snap.prefs || {}, patch);
+  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false, kill:!!(snap.prefs && snap.prefs.kill), node:(snap.prefs && snap.prefs.node) || snap.nodeId || "", exit:(snap.prefs && snap.prefs.exit) || "tun", bypass:(snap.prefs && snap.prefs.bypass) || []}, snap.prefs || {}, patch);
   try { paint(await api("/v1/prefs", base)); }
   catch(e){ $("err").hidden=false; $("err").textContent=e.message; }
 }
@@ -524,6 +558,76 @@ async function pushBypass(){
   await pushPrefs({bypass: lines});
 }
 $("bypass").addEventListener("change", () => { pushBypass(); });
+let procCache = {folders:[], installed:[], running:[]};
+function procToken(item){
+  if (!item) return "";
+  if (item.kind === "folder") {
+    let p = String(item.path || "").replace(/\\/g, "/");
+    if (p && !p.endsWith("/")) p += "/";
+    return p;
+  }
+  if (item.path && /[/\\]/.test(item.path)) {
+    return String(item.path).replace(/\\/g, "/").replace(/\/+$/, "");
+  }
+  return String(item.name || "").trim();
+}
+function renderProc(filter){
+  const q = (filter || "").trim().toLowerCase();
+  const have = {};
+  readBypass().forEach((x) => { have[x] = true; });
+  const root = $("plist");
+  root.innerHTML = "";
+  const groups = [
+    ["Папки — все процессы внутри", procCache.folders || []],
+    ["Установленные", procCache.installed || []],
+    ["Сейчас запущены", procCache.running || []]
+  ];
+  let n = 0;
+  groups.forEach((g) => {
+    const shown = g[1].filter((it) => !q || (String(it.name || "") + " " + String(it.path || "")).toLowerCase().indexOf(q) >= 0);
+    if (!shown.length) return;
+    const h = document.createElement("div");
+    h.className = "k";
+    h.style.margin = "10px 0 4px";
+    h.textContent = g[0];
+    root.appendChild(h);
+    shown.forEach((it) => {
+      n++;
+      const tok = procToken(it);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "prow" + (have[tok] ? " on" : "");
+      const name = document.createElement("b");
+      name.textContent = (have[tok] ? "✓ " : "") + (it.name || tok);
+      const sub = document.createElement("span");
+      sub.textContent = tok;
+      b.appendChild(name);
+      b.appendChild(sub);
+      b.onclick = async () => {
+        let lines = readBypass().filter((x) => x !== tok);
+        if (!have[tok]) lines.push(tok);
+        $("bypass").value = lines.join("\n");
+        await pushBypass();
+        renderProc($("pq").value);
+      };
+      root.appendChild(b);
+    });
+  });
+  if (!n) root.textContent = "Ничего не нашла. Имя или папку можно вписать в поле.";
+}
+$("pick").onclick = async () => {
+  $("sheet").hidden = false;
+  $("plist").textContent = "смотрю процессы…";
+  try {
+    procCache = await api("/v1/procs");
+    renderProc($("pq").value);
+  } catch (e) {
+    $("plist").textContent = e.message;
+  }
+};
+$("sheetx").onclick = () => { $("sheet").hidden = true; };
+$("pq").addEventListener("input", () => renderProc($("pq").value));
+document.querySelectorAll("#exits button").forEach((b) => { b.onclick = () => pushPrefs({exit:b.dataset.v}); });
 function toggleLook(){ $("lookbody").hidden = !$("lookbody").hidden; }
 $("gear").onclick = toggleLook;
 $("lookbtn").onclick = toggleLook;

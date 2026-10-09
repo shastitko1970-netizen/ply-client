@@ -246,7 +246,7 @@ func daemonMux(token string) http.Handler {
 			s.Auto = next.Auto
 			s.Prefs = next
 		})
-		if currentSnap().Live && (next.MTU != prev.MTU || next.Split != prev.Split || !sameStrings(next.Bypass, prev.Bypass)) {
+		if currentSnap().Live && (next.MTU != prev.MTU || next.Split != prev.Split || next.Exit != prev.Exit || !sameStrings(next.Bypass, prev.Bypass)) {
 			go daemonConnect(ReadURL(), false)
 		}
 		writeJSON(w, currentSnap())
@@ -337,6 +337,10 @@ func daemonMux(token string) http.Handler {
 			On bool `json:"on"`
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+		if body.On && LoadPrefs().Exit == "proxy" && runtime.GOOS != "android" {
+			http.Error(w, "«Не выпускать» только у туннеля. В прокси оно отрежет программы от ядра.", 400)
+			return
+		}
 		p := LoadPrefs()
 		if body.On && currentSnap().Live {
 			if err := EngageKill(""); err != nil {
@@ -351,6 +355,32 @@ func daemonMux(token string) http.Handler {
 		if err := SavePrefs(p); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
+		}
+		writeJSON(w, currentSnap())
+	})
+	mux.HandleFunc("/v1/procs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		running, installed, folders := ListProcs()
+		writeJSON(w, map[string]any{
+			"running":   running,
+			"installed": installed,
+			"folders":   folders,
+		})
+	})
+	mux.HandleFunc("/v1/tray", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		var body struct {
+			Yield bool `json:"yield"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+		if body.Yield {
+			YieldTray()
 		}
 		writeJSON(w, currentSnap())
 	})

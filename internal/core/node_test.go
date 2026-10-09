@@ -342,7 +342,7 @@ func TestRenderXrayTunFD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := RenderXrayTun(n, 10808, true, 7, 1400, nil)
+	b, err := RenderXrayTun(n, 10808, true, 7, 1400, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestRenderXrayTunFD(t *testing.T) {
 	if strings.Contains(s, "autoSystemRoutingTable") {
 		t.Fatal("android fd should skip host routing")
 	}
-	withBypass, err := RenderXrayTun(n, 10808, true, 7, 1400, []string{"com.valvesoftware.android.steam.community"})
+	withBypass, err := RenderXrayTun(n, 10808, true, 7, 1400, []string{"com.valvesoftware.android.steam.community"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func TestBypassProcessesStayDirect(t *testing.T) {
 	if strings.Contains(string(plain), `"process"`) {
 		t.Fatal("empty bypass list must not add a process rule")
 	}
-	b, err := RenderXrayTun(n, 10808, true, -1, 1400, []string{"Steam.EXE", "self/", `C:\Games\cs2.exe`, "steam.exe", "ply.exe"})
+	b, err := RenderXrayTun(n, 10808, true, -1, 1400, []string{"Steam.EXE", "self/", `C:\Games\cs2.exe`, "steam.exe", "ply.exe"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,5 +403,77 @@ func TestBypassProcessesStayDirect(t *testing.T) {
 	}
 	if strings.Index(route, `"process"`) > strings.Index(route, `"dns-out"`) {
 		t.Fatal("bypass must be ahead of dns hijack, or the game gets a fake address")
+	}
+}
+
+func TestSocksLinkAndProxyMode(t *testing.T) {
+	n, err := ParseLink("socks5://alice:secret@10.1.2.3:8000#lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Proto != "socks" || n.User != "alice" || n.Password != "secret" || n.Host != "10.1.2.3" || n.Port != 8000 || n.Remark != "lab" {
+		t.Fatalf("%+v", n)
+	}
+	if _, err := ParseLink("socks4://alice@10.1.2.3:8000"); err == nil {
+		t.Fatal("socks4 must be rejected")
+	}
+	tun, err := RenderXrayTun(n, 10808, true, -1, 1400, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := string(tun)
+	if !strings.Contains(ts, `"protocol": "tun"`) || !strings.Contains(ts, `"protocol": "socks"`) || !strings.Contains(ts, `"user": "alice"`) {
+		t.Fatal("tun mode keeps the tunnel and uses socks as the upstream")
+	}
+	if strings.Contains(ts, "dns-query") || strings.Contains(ts, `"routeOnly": true`) || strings.Contains(ts, "quic") {
+		t.Fatal("empty bypass must not change the working path")
+	}
+	px, err := RenderXrayTun(n, 10808, true, -1, 1400, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps := string(px)
+	if strings.Contains(ps, `"protocol": "tun"`) {
+		t.Fatal("proxy mode must not open tun")
+	}
+	if !strings.Contains(ps, `"protocol": "mixed"`) || !strings.Contains(ps, "10.1.2.3") || !strings.Contains(ps, `"fakedns"`) {
+		t.Fatal(ps)
+	}
+	and, err := RenderXrayTun(n, 10808, true, 7, 1400, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(and), `"fd": 7`) || !strings.Contains(string(and), `"protocol": "tun"`) {
+		t.Fatal("android stays on tun even if proxy was asked")
+	}
+}
+
+func TestBypassFolderKeepsCase(t *testing.T) {
+	n, err := ParseLink(paper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := RenderXrayTun(n, 10808, true, -1, 1400, []string{`C:\Program Files\HoYoPlay\`}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, "C:/Program Files/HoYoPlay/") {
+		t.Fatal(s)
+	}
+	if strings.Contains(s, "c:/program files/hoyoplay/") {
+		t.Fatal("folder case must stay, xray matches the path as written")
+	}
+}
+
+func TestExitDefaultsToTun(t *testing.T) {
+	if got := NormalizePrefs(Prefs{}).Exit; got != "tun" {
+		t.Fatal(got)
+	}
+	if got := NormalizePrefs(Prefs{Exit: "proxy"}).Exit; got != "proxy" {
+		t.Fatal(got)
+	}
+	if got := NormalizePrefs(Prefs{Exit: "nope"}).Exit; got != "tun" {
+		t.Fatal(got)
 	}
 }

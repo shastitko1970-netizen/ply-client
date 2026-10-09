@@ -1,6 +1,6 @@
 package core
 
-var Version = "2.1.4"
+var Version = "2.1.5"
 
 const AppUserModelID = "Ply.VPN"
 const WindowTitle = "Ply — VPN"

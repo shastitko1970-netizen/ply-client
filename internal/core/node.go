@@ -16,6 +16,7 @@ type Node struct {
 	Proto    string `json:"proto"`
 	UUID     string `json:"uuid"`
 	Password string `json:"password"`
+	User     string `json:"user,omitempty"`
 	Method   string `json:"method"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
@@ -54,6 +55,9 @@ func (n *Node) Label() string {
 			return "hy2 · " + n.Obfs
 		}
 		return "hy2 · tls"
+	}
+	if n.Proto == "socks" {
+		return "socks5"
 	}
 	p := n.Proto
 	if p == "" {
@@ -171,15 +175,15 @@ func Resolve(source string) (*Node, error) {
 		}
 		return ParseLink(line)
 	default:
-		return nil, fmt.Errorf("нужна ссылка подписки или ключ vless, vmess, trojan, ss или hy2")
+		return nil, fmt.Errorf("нужна ссылка подписки или ключ vless, vmess, trojan, ss, hy2 или socks5")
 	}
 }
 
 func RenderXray(n *Node, port int, split bool) ([]byte, error) {
-	return RenderXrayTun(n, port, split, -1, 0, nil)
+	return RenderXrayTun(n, port, split, -1, 0, nil, false)
 }
 
-func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []string) ([]byte, error) {
+func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []string, proxyOnly bool) ([]byte, error) {
 	if mtu == 0 {
 		mtu = EffectiveMTU()
 	}
@@ -203,6 +207,8 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []strin
 	bypass = NormalizeBypass(bypass)
 	if tunFD >= 0 {
 		bypass = nil
+		// Телефон всегда VpnService. Системный прокси там не наш режим.
+		proxyOnly = false
 	}
 	if len(bypass) > 0 {
 		rules = append(rules, map[string]any{
@@ -251,6 +257,24 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []strin
 		"queryStrategy": "UseIPv4",
 	}
 
+	var inbounds []any
+	if !proxyOnly {
+		inbounds = append(inbounds, map[string]any{
+			"tag":      "tun",
+			"protocol": "tun",
+			"settings": tunSettings(tunFD, mtu),
+			"sniffing": sniffing(),
+		})
+	}
+	inbounds = append(inbounds, map[string]any{
+		"tag":      "socks",
+		"port":     port,
+		"listen":   "127.0.0.1",
+		"protocol": "mixed",
+		"sniffing": sniffing(),
+		"settings": map[string]any{"auth": "noauth", "udp": true},
+	})
+
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"dns": dns,
@@ -263,22 +287,7 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []strin
 				"0": map[string]any{"bufferSize": 1024, "connIdle": 300},
 			},
 		},
-		"inbounds": []any{
-			map[string]any{
-				"tag":      "tun",
-				"protocol": "tun",
-				"settings": tunSettings(tunFD, mtu),
-				"sniffing": sniffing(),
-			},
-			map[string]any{
-				"tag":      "socks",
-				"port":     port,
-				"listen":   "127.0.0.1",
-				"protocol": "mixed",
-				"sniffing": sniffing(),
-				"settings": map[string]any{"auth": "noauth", "udp": true},
-			},
-		},
+		"inbounds": inbounds,
 		"outbounds": []any{
 			n.outbound(),
 			map[string]any{
@@ -393,6 +402,19 @@ func (n *Node) outbound() map[string]any {
 			},
 			"streamSettings": n.streamSettings(),
 			"mux":            mux,
+		}
+	case "socks":
+		srv := map[string]any{
+			"address": n.dialAddr(),
+			"port":    n.Port,
+		}
+		if n.User != "" || n.Password != "" {
+			srv["users"] = []any{map[string]any{"user": n.User, "pass": n.Password}}
+		}
+		return map[string]any{
+			"tag":      "proxy",
+			"protocol": "socks",
+			"settings": map[string]any{"servers": []any{srv}},
 		}
 	default:
 		user := map[string]any{"id": n.UUID, "encryption": firstNonEmpty(n.Enc, "none")}

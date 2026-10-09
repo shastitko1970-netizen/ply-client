@@ -15,5 +15,6 @@ func RemoveTray()                     {}
 func HideToTray()                     {}
 func ShowFromTray()                   {}
 func RequestQuit()                    {}
+func YieldTray()                      {}
 func TrayBalloon(title, msg string)   {}
 func FindPlyHWND() uintptr            { return 0 }

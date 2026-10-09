@@ -6,11 +6,30 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sync"
 
 	"github.com/jchv/go-webview2"
+	"golang.org/x/sys/windows"
 
 	"ply/internal/core"
 )
+
+var (
+	engMu    sync.Mutex
+	shellEng *core.Daemon
+)
+
+func setShellEng(d *core.Daemon) {
+	engMu.Lock()
+	shellEng = d
+	engMu.Unlock()
+}
+
+func getShellEng() *core.Daemon {
+	engMu.Lock()
+	defer engMu.Unlock()
+	return shellEng
+}
 
 func init() {
 	runtime.LockOSThread()
@@ -47,6 +66,35 @@ func openWebShell() bool {
 	w.SetSize(dip(680), dip(440), webview2.HintMin)
 	dressWindow(hwnd)
 	setOuterSize(hwnd, dip(800), dip(680))
+	core.AttachTrayTo(windows.HWND(hwnd), core.TrayHooks{
+		OnConnect: func() {
+			go func() {
+				eng := getShellEng()
+				if eng == nil {
+					return
+				}
+				_, _ = eng.Connect(core.ReadURL(), true)
+			}()
+		},
+		OnDisconnect: func() {
+			go func() {
+				eng := getShellEng()
+				if eng == nil {
+					return
+				}
+				_, _ = eng.Disconnect()
+			}()
+		},
+		OnQuit: func() {
+			go func() {
+				eng := getShellEng()
+				if eng != nil {
+					_ = eng.Quit()
+				}
+				core.RequestQuit()
+			}()
+		},
+	})
 	w.SetHtml(bootHTML)
 	go func() {
 		d, err := core.EnsureWorker()
@@ -56,6 +104,8 @@ func openWebShell() bool {
 			})
 			return
 		}
+		setShellEng(d)
+		_ = d.YieldTray()
 		u := d.ShellURL()
 		w.Dispatch(func() { w.Navigate(u) })
 	}()
@@ -99,8 +149,9 @@ const dragJS = `(function(){
   document.addEventListener('mousedown', function(e){
     if (e.button !== 0) return;
     var t = e.target;
-    if (t && t.closest && t.closest('.btns,button,input,textarea,a,.toggle,.power,.field')) return;
-    if ((t && t.closest && t.closest('.chrome,[data-drag]')) || e.clientY <= 40) {
+    if (t && t.closest && t.closest('.btns,button,input,textarea,a,.toggle,.power,.field,.sheet,.seg')) return;
+    if (t && t.closest && t.closest('.chrome')) return;
+    if ((t && t.closest && t.closest('[data-drag]')) || e.clientY <= 40) {
       try { plyWin('drag'); } catch (err) {}
     }
   }, true);
