@@ -4,6 +4,8 @@ package core
 
 func DefaultViaPly() bool { return true }
 
+func platformDirectResolver() string { return "9.9.9.9" }
+
 func ApplyTunRoutes(serverIP string) error {
 	_ = serverIP
 	return nil

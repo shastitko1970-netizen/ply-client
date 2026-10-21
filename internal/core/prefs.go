@@ -8,17 +8,20 @@ import (
 )
 
 type Prefs struct {
-	Theme   string   `json:"theme"`
-	Density string   `json:"density"`
-	Silent  bool     `json:"silent"`
-	Core    string   `json:"core"`
-	MTU     int      `json:"mtu"`
-	Split   bool     `json:"split"`
-	Auto    bool     `json:"auto"`
-	Kill    bool     `json:"kill"`
-	Node    string   `json:"node"`
-	Bypass  []string `json:"bypass,omitempty"`
-	Exit    string   `json:"exit,omitempty"`
+	Theme    string   `json:"theme"`
+	Density  string   `json:"density"`
+	Silent   bool     `json:"silent"`
+	Core     string   `json:"core"`
+	MTU      int      `json:"mtu"`
+	Split    bool     `json:"split"`
+	Auto     bool     `json:"auto"`
+	Kill     bool     `json:"kill"`
+	Node     string   `json:"node"`
+	Bypass   []string `json:"bypass,omitempty"`
+	Exit     string   `json:"exit,omitempty"`
+	Hoyo     bool     `json:"hoyo,omitempty"`
+	Blizzard bool     `json:"blizzard,omitempty"`
+	Verbose  bool     `json:"verbose,omitempty"`
 }
 
 func DefaultPrefs() Prefs {
@@ -143,8 +146,15 @@ func readSplitFile() bool {
 }
 
 func NormalizeBypass(in []string) []string {
+	return normalizeBypass(in, 48)
+}
+
+func normalizeBypass(in []string, limit int) []string {
 	if len(in) == 0 {
 		return nil
+	}
+	if limit <= 0 {
+		limit = 48
 	}
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(in))
@@ -159,23 +169,23 @@ func NormalizeBypass(in []string) []string {
 			if s == "" || strings.Contains(s, "..") {
 				continue
 			}
-			low := strings.ToLower(s)
-			switch low {
+			switch strings.ToLower(s) {
 			case "self/", "xray/", "xray", "xray.exe", "ply", "ply.exe", "plycore", "plycore.exe":
 				continue
 			}
-			if !strings.Contains(s, "/") {
-				s = low
-			}
+			// Xray matches the process name and the path byte for byte.
+			// Lowercasing a bare name makes ZenlessZoneZero.exe miss.
+			s = applyBypassCase(s)
 			if len(s) > 240 {
 				s = s[:240]
 			}
+			low := strings.ToLower(s)
 			if _, ok := seen[low]; ok {
 				continue
 			}
 			seen[low] = struct{}{}
 			out = append(out, s)
-			if len(out) >= 48 {
+			if len(out) >= limit {
 				return out
 			}
 		}

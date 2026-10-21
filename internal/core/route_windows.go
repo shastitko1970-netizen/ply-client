@@ -76,7 +76,9 @@ func DefaultViaPly() bool {
 	if a == nil {
 		return false
 	}
-	for _, s := range []string{"1.1.1.1", "8.8.8.8", "9.9.9.9"} {
+	// 1.1.1.1 — сток NRPT, его нельзя проверять: для «мимо» на него нет
+	// отдельного маршрута, а адрес провайдера как раз вынесен из туннеля.
+	for _, s := range []string{"198.51.100.1", "203.0.113.1"} {
 		idx := bestIfIndex(net.ParseIP(s))
 		if idx == 0 {
 			continue
@@ -252,6 +254,33 @@ try {
   }
 } catch {}
 
+# DNS «мимо» спрашивает провайдера с outbound direct. Без /32 пакет
+# уходит в tun (0.0.0.0/1) и снова попадает в dns-out. 1.1.1.1 не трогаем:
+# NRPT шлёт туда все остальные имена, они должны остаться в туннеле.
+$direct = @()
+if ($env:PLY_DNS) {
+  foreach ($ip in ($env:PLY_DNS -split ',')) {
+    $ip = $ip.Trim()
+    if ($ip -match '^\d{1,3}(\.\d{1,3}){3}$' -and $ip -ne '1.1.1.1') { $direct += $ip }
+  }
+}
+if ($primary -and $direct.Count -gt 0) {
+  foreach ($ip in $direct) {
+    route delete $ip mask 255.255.255.255 | Out-Null
+    if ($primary.NextHop -and $primary.NextHop -ne '0.0.0.0') {
+      route add $ip mask 255.255.255.255 $primary.NextHop metric 1 if ([int]$primary.IfIndex) | Out-Null
+    } else {
+      route add $ip mask 255.255.255.255 0.0.0.0 metric 1 if ([int]$primary.IfIndex) | Out-Null
+    }
+  }
+}
+if ($state.PSObject.Properties['directDNS']) {
+  $state.directDNS = @($direct)
+} else {
+  $state | Add-Member -NotePropertyName 'directDNS' -NotePropertyValue @($direct) -Force
+}
+($state | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $stateFile -Encoding UTF8
+
 route delete 0.0.0.0 mask 128.0.0.0 | Out-Null
 route delete 128.0.0.0 mask 128.0.0.0 | Out-Null
 route add 0.0.0.0 mask 128.0.0.0 198.18.0.1 metric 1 if $idx | Out-Null
@@ -276,6 +305,11 @@ Remove-NetRoute -DestinationPrefix '::/1' -Confirm:$false -ErrorAction SilentlyC
 Remove-NetRoute -DestinationPrefix '8000::/1' -Confirm:$false -ErrorAction SilentlyContinue
 if ($state.serverIP) {
   route delete $state.serverIP mask 255.255.255.255 | Out-Null
+}
+if ($state.directDNS) {
+  foreach ($ip in @($state.directDNS)) {
+    if ($ip) { route delete $ip mask 255.255.255.255 | Out-Null }
+  }
 }
 
 if ($state.metrics) {
@@ -341,10 +375,16 @@ func ApplyTunRoutes(serverIP string) error {
 	if ReadSplit() {
 		split = "1"
 	}
+	dns := ""
+	p := LoadPrefs()
+	if len(p.Bypass) > 0 || p.Hoyo || p.Blizzard {
+		dns = DirectResolver()
+	}
 	out, err := runPS(applyTunPS, []string{
 		"PLY_STATE=" + st,
 		"PLY_SERVER=" + strings.TrimSpace(serverIP),
 		"PLY_SPLIT=" + split,
+		"PLY_DNS=" + dns,
 	})
 	if err != nil {
 		return fmt.Errorf("маршруты: %s (%v)", out, err)
@@ -398,6 +438,112 @@ if ($hit) { 'REMOVED' } else { 'ABSENT' }
 
 type routeStateLite struct {
 	ServerIP string `json:"serverIP"`
+}
+
+func platformDirectResolver() string {
+	dnsIP, gw := readUpstreamDNS()
+	if dnsIP != "" && !tunnelSink(dnsIP) {
+		return dnsIP
+	}
+	if gw != "" && privateIPv4(gw) && !tunnelSink(gw) {
+		return gw
+	}
+	return "9.9.9.9"
+}
+
+func tunnelSink(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return true
+	}
+	v4 := parsed.To4()
+	if v4 == nil {
+		return true
+	}
+	s := v4.String()
+	if s == "1.1.1.1" || s == "0.0.0.0" {
+		return true
+	}
+	if v4[0] == 127 || (v4[0] == 169 && v4[1] == 254) {
+		return true
+	}
+	if v4[0] == 198 && v4[1] == 18 {
+		return true
+	}
+	return false
+}
+
+func privateIPv4(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	v4 := parsed.To4()
+	if v4 == nil {
+		return false
+	}
+	if v4[0] == 10 || (v4[0] == 192 && v4[1] == 168) {
+		return true
+	}
+	return v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31
+}
+
+func readUpstreamDNS() (dnsIP, gateway string) {
+	var size uint32 = 15000
+	for i := 0; i < 3; i++ {
+		buf := make([]byte, size)
+		aa := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0]))
+		err := windows.GetAdaptersAddresses(windows.AF_INET, windows.GAA_FLAG_INCLUDE_PREFIX|windows.GAA_FLAG_INCLUDE_GATEWAYS, 0, aa, &size)
+		if err == windows.ERROR_BUFFER_OVERFLOW {
+			continue
+		}
+		if err != nil {
+			return "", ""
+		}
+		var fallbackDNS, fallbackGW string
+		for ; aa != nil; aa = aa.Next {
+			if aa.OperStatus != windows.IfOperStatusUp {
+				continue
+			}
+			desc := windows.UTF16PtrToString(aa.Description)
+			name := windows.UTF16PtrToString(aa.FriendlyName)
+			if strings.Contains(strings.ToLower(desc+" "+name), "ply") {
+				continue
+			}
+			var dns []string
+			for d := aa.FirstDnsServerAddress; d != nil; d = d.Next {
+				if d.Address.Sockaddr == nil {
+					continue
+				}
+				ip := d.Address.IP()
+				if ip == nil {
+					continue
+				}
+				v4 := ip.To4()
+				if v4 == nil || tunnelSink(v4.String()) {
+					continue
+				}
+				dns = append(dns, v4.String())
+			}
+			gw := ""
+			if aa.FirstGatewayAddress != nil && aa.FirstGatewayAddress.Address.Sockaddr != nil {
+				if ip := aa.FirstGatewayAddress.Address.IP(); ip != nil && ip.To4() != nil {
+					gw = ip.To4().String()
+				}
+			}
+			if gw != "" && len(dns) > 0 {
+				return dns[0], gw
+			}
+			if fallbackDNS == "" && len(dns) > 0 {
+				fallbackDNS = dns[0]
+			}
+			if fallbackGW == "" && privateIPv4(gw) {
+				fallbackGW = gw
+			}
+		}
+		return fallbackDNS, fallbackGW
+	}
+	return "", ""
 }
 
 func SavedServerIP() string {
