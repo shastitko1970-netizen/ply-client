@@ -62,7 +62,7 @@ xray           tun ply0, mixed 127.0.0.1:10808
 
 ```bash
 go test ./internal/core/...
-go build -trimpath -ldflags "-s -w -X ply/internal/core.Version=2.1.6" -o PlyCore ./cmd/worker
+go build -trimpath -ldflags "-s -w -X ply/internal/core.Version=2.1.7" -o PlyCore ./cmd/worker
 ```
 
 Windows-окно: `./cmd/ply`. Linux и macOS-окно: `./cmd/launch` (это бинарь `Ply` в архиве).

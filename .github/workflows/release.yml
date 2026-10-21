@@ -21,6 +21,8 @@ jobs:
           go-version: "1.26.x"
       - name: Test
         run: go test ./internal/core/...
+      - name: Windows exe has an icon
+        run: bash scripts/verify_windows_icon.sh
 
   windows:
     needs: test
@@ -47,15 +49,8 @@ jobs:
         run: python scripts/make_icon.py
         continue-on-error: true
       - name: Winres
-        run: |
-          go install github.com/akavel/rsrc@latest
-          $env:PATH = "$(go env GOPATH)\bin;" + $env:PATH
-          if (Test-Path assets/icon.ico) {
-            rsrc -manifest assets/ui.manifest -ico assets/icon.ico -arch amd64 -o cmd/ply/rsrc_windows.syso
-            rsrc -manifest assets/app.manifest -ico assets/icon.ico -arch amd64 -o cmd/setup/rsrc_windows.syso
-            New-Item -ItemType Directory -Force cmd/worker | Out-Null
-            rsrc -manifest assets/app.manifest -ico assets/icon.ico -arch amd64 -o cmd/worker/rsrc_windows.syso
-          }
+        shell: bash
+        run: bash scripts/embed_windows_icon.sh
       - name: Build Ply
         env:
           CGO_ENABLED: "0"
@@ -84,6 +79,9 @@ jobs:
           Copy-Item README.txt dist/README.txt
           Compress-Archive -Path dist/PlySetup.exe, dist/README.txt -DestinationPath "dist/Ply-$env:PLY_VERSION-win64.zip" -Force
           Compress-Archive -Path payload\* -DestinationPath "dist/Ply-portable-$env:PLY_VERSION-win64.zip" -Force
+      - name: Icon resource
+        shell: bash
+        run: python scripts/check_pe_icon.py dist/Ply.exe dist/PlyCore.exe dist/PlySetup.exe
       - uses: actions/upload-artifact@v4
         with:
           name: ply-windows
@@ -202,11 +200,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Ply ${{ github.ref_name }}
           body: |
-            2.1.6. Игры мимо VPN на Windows снова совпадают по имени процесса.
-            Пресеты HoYo / ZZZ и Blizzard / WoW + Battle.net: лаунчер, игра, патчи, голос. Папка без номера версии, домены и сети Blizzard — запас, если процесс не узнали.
-            Их DNS спрашивает провайдера, не узел. Остальные имена по-прежнему через туннель.
-            «Подробный журнал» показывает, куда ушло соединение и нашлось ли имя процесса.
-            На Android по-прежнему список приложений, не правила ядра. Новый APK этим релизом не приложен.
+            2.1.7. У Ply.exe, PlyCore.exe и установщика снова есть значок.
+            В 2.1.6 его не вшили, поэтому окно, трей и ярлык были пустыми.
             Сборки не подписаны.
             Ключи: vless, hy2, vmess, trojan, ss, socks5.
           files: dist/*
