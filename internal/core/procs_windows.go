@@ -46,7 +46,7 @@ func ListProcs() (running, installed, folders []ProcHit) {
 	}
 
 	for _, dir := range knownGameDirs() {
-		addFolder(filepath.Base(dir), dir, true)
+		addFolder(filepath.Base(dir), liftInstallDir(dir), true)
 	}
 
 	for _, root := range []struct {
@@ -76,6 +76,26 @@ func ListProcs() (running, installed, folders []ProcHit) {
 }
 
 func listRunning(seen map[string]struct{}) []ProcHit {
+	var out []ProcHit
+	for _, full := range runningImagePaths() {
+		if len(out) >= 80 {
+			break
+		}
+		if full == "" || skipProcess(full) {
+			continue
+		}
+		hit := runningHit(full)
+		key := strings.ToLower(hit.Path)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, hit)
+	}
+	return out
+}
+
+func runningImagePaths() []string {
 	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
 	snapProc := kernel32.NewProc("CreateToolhelp32Snapshot")
 	first := kernel32.NewProc("Process32FirstW")
@@ -106,22 +126,13 @@ func listRunning(seen map[string]struct{}) []ProcHit {
 	var pe processEntry32
 	pe.Size = uint32(unsafe.Sizeof(pe))
 	r, _, _ := first.Call(handle, uintptr(unsafe.Pointer(&pe)))
-	var out []ProcHit
+	var out []string
 	for r != 0 {
-		if len(out) >= 80 {
+		if len(out) >= 400 {
 			break
 		}
-		full := imagePath(open, query, closeH, pe.ProcessID)
-		if full != "" && !skipProcess(full) {
-			key := strings.ToLower(full)
-			if _, ok := seen[key]; !ok {
-				seen[key] = struct{}{}
-				out = append(out, ProcHit{
-					Name: filepath.Base(full),
-					Path: slashPath(full),
-					Kind: "running",
-				})
-			}
+		if full := imagePath(open, query, closeH, pe.ProcessID); full != "" {
+			out = append(out, full)
 		}
 		pe.Size = uint32(unsafe.Sizeof(pe))
 		r, _, _ = next.Call(handle, uintptr(unsafe.Pointer(&pe)))
@@ -198,7 +209,7 @@ func walkUninstall(root registry.Key, path string, addFolder func(name, path str
 		}
 		game := gameish(disp + " " + dir)
 		if dir != "" && (game || loc != "") {
-			addFolder(disp, dir, game)
+			addFolder(disp, liftInstallDir(dir), game)
 		}
 		if exe != "" {
 			addExe(disp, exe)
@@ -207,27 +218,83 @@ func walkUninstall(root registry.Key, path string, addFolder func(name, path str
 }
 
 func knownGameDirs() []string {
-	var roots []string
-	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA", "ProgramData"} {
-		if v := os.Getenv(env); v != "" {
-			roots = append(roots, v)
-		}
-	}
-	names := []string{
-		"HoYoPlay", "miHoYo", "miHoYo Launcher", "Cognosphere",
-		"Genshin Impact", "Honkai Star Rail", "Star Rail",
-		"Zenless Zone Zero", "ZenlessZoneZero",
-	}
+	names := append(append([]string{}, hoyoDirNames...), blizzardDirNames...)
 	var out []string
-	for _, root := range roots {
+	seen := map[string]struct{}{}
+	for _, root := range installRoots() {
 		for _, name := range names {
 			p := filepath.Join(root, name)
-			if st, err := os.Stat(p); err == nil && st.IsDir() {
-				out = append(out, p)
+			st, err := os.Stat(p)
+			if err != nil || !st.IsDir() {
+				continue
 			}
+			key := strings.ToLower(p)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, p)
 		}
 	}
 	return out
+}
+
+var hoyoDirNames = []string{
+	"HoYoPlay", "miHoYo", "miHoYo Launcher", "Cognosphere",
+	"Genshin Impact", "Honkai Star Rail", "Star Rail",
+	"Zenless Zone Zero", "ZenlessZoneZero", "ZenlessZoneZero Game",
+}
+
+var blizzardDirNames = []string{
+	"Battle.net", "Blizzard", "Blizzard Entertainment", "World of Warcraft",
+}
+
+func installRoots() []string {
+	seen := map[string]struct{}{}
+	var roots []string
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		p = strings.TrimRight(p, `/\`)
+		if p == "" {
+			return
+		}
+		key := strings.ToLower(p)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		st, err := os.Stat(p)
+		if err != nil || !st.IsDir() {
+			return
+		}
+		seen[key] = struct{}{}
+		roots = append(roots, p)
+	}
+	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA", "ProgramData"} {
+		add(os.Getenv(env))
+	}
+	mask, err := windows.GetLogicalDrives()
+	if err != nil {
+		return roots
+	}
+	for i := uint(0); i < 26; i++ {
+		if mask&(1<<i) == 0 {
+			continue
+		}
+		root := string(rune('A'+i)) + `:\`
+		p, err := windows.UTF16PtrFromString(root)
+		if err != nil || windows.GetDriveType(p) != windows.DRIVE_FIXED {
+			continue
+		}
+		add(root)
+		add(filepath.Join(root, "Program Files"))
+		add(filepath.Join(root, "Program Files (x86)"))
+		add(filepath.Join(root, "Games"))
+		add(filepath.Join(root, "ProgramData"))
+	}
+	return roots
 }
 
 func iconToExe(icon string) string {
@@ -267,13 +334,7 @@ func slashPath(path string) string {
 }
 
 func gameish(s string) bool {
-	s = strings.ToLower(s)
-	for _, k := range []string{"hoyo", "mihoyo", "genshin", "star rail", "zenless", "cognosphere", "honkai"} {
-		if strings.Contains(s, k) {
-			return true
-		}
-	}
-	return false
+	return presetFamily(s) != ""
 }
 
 func coveredBy(path string, seen map[string]struct{}) bool {

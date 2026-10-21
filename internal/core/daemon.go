@@ -246,7 +246,7 @@ func daemonMux(token string) http.Handler {
 			s.Auto = next.Auto
 			s.Prefs = next
 		})
-		if currentSnap().Live && (next.MTU != prev.MTU || next.Split != prev.Split || next.Exit != prev.Exit || !sameStrings(next.Bypass, prev.Bypass)) {
+		if currentSnap().Live && (next.MTU != prev.MTU || next.Split != prev.Split || next.Exit != prev.Exit || !sameStrings(next.Bypass, prev.Bypass) || next.Hoyo != prev.Hoyo || next.Blizzard != prev.Blizzard || next.Verbose != prev.Verbose) {
 			go daemonConnect(ReadURL(), false)
 		}
 		writeJSON(w, currentSnap())

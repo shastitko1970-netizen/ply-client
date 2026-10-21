@@ -216,7 +216,21 @@ details[open] summary::after{content:" скрыть"}
           <button id="pick" class="btn ghost" type="button" style="width:auto;margin-left:auto;padding:0 10px;height:28px">выбрать</button>
         </div>
         <textarea id="bypass" class="area" spellcheck="false" autocomplete="off" placeholder="steam.exe&#10;C:/Program Files/HoYoPlay/"></textarea>
-        <p class="note">Игры и программы из списка идут мимо туннеля, вместе со своим DNS. «Выбрать» — запущенные и установленные. Папка с / в конце закрывает все процессы внутри: HoYoPlay одной строкой, а не каждый exe. «Не выпускать» их тоже режет. На Android отмечаешь приложения в телефоне.</p>
+        <div class="sw">
+          <div>
+            <div class="t">HoYo / ZZZ</div>
+            <div class="s">лаунчер, игра, патчи и их адреса мимо туннеля</div>
+          </div>
+          <button id="hoyo" class="toggle" type="button" aria-label="HoYo / ZZZ" aria-pressed="false"><i></i></button>
+        </div>
+        <div class="sw">
+          <div>
+            <div class="t">Blizzard / WoW + Battle.net</div>
+            <div class="s">лаунчер, игра, патчи и их адреса мимо туннеля</div>
+          </div>
+          <button id="blizzard" class="toggle" type="button" aria-label="Blizzard / WoW + Battle.net" aria-pressed="false"><i></i></button>
+        </div>
+        <p class="note">Игры и программы из списка идут мимо туннеля. Имя сравнивается как в диспетчере. Папка с / в конце закрывает все процессы внутри, без номера версии: после обновления HoYoPlay и Battle.net строка жива. Пресеты добавляют имена, папку установки, домены и сети Blizzard. Их DNS спрашивает провайдера, не узел. «Не выпускать» их тоже режет. На Android отмечаешь приложения в телефоне.</p>
         <p class="note">Список VPN в Windows не наш. Включай кнопкой здесь или пунктом «Включить VPN» у часов. Имя сайта берём из запроса, не из адреса провайдера.</p>
         <div id="live" class="livebox" hidden>
           <div class="chip">
@@ -267,6 +281,13 @@ details[open] summary::after{content:" скрыть"}
         </div>
       </section>
       <section class="card" id="diagcard">
+        <div class="sw">
+          <div>
+            <div class="t">Подробный журнал</div>
+            <div class="s">куда ушло соединение и нашлось ли имя процесса</div>
+          </div>
+          <button id="verbose" class="toggle" type="button" aria-label="Подробный журнал" aria-pressed="false"><i></i></button>
+        </div>
         <button id="diag" class="btn ghost" type="button">Диагноз</button>
         <pre id="log" class="log" hidden></pre>
         <button id="copylog" class="btn ghost" type="button" style="margin-top:8px" hidden>Скопировать</button>
@@ -532,6 +553,9 @@ function applyLook(p){
   markSeg("mtus", String(p.mtu || 1400));
   markSeg("exits", p.exit === "proxy" ? "proxy" : "tun");
   if ($("silent")) setToggle($("silent"), p.silent !== false);
+  if ($("hoyo")) setToggle($("hoyo"), !!p.hoyo);
+  if ($("blizzard")) setToggle($("blizzard"), !!p.blizzard);
+  if ($("verbose")) setToggle($("verbose"), !!p.verbose);
   const box = $("bypass");
   if (box && document.activeElement !== box){
     const next = Array.isArray(p.bypass) ? p.bypass.join("\n") : "";
@@ -544,7 +568,7 @@ function markSeg(id, v){
   root.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === String(v)));
 }
 async function pushPrefs(patch){
-  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false, kill:!!(snap.prefs && snap.prefs.kill), node:(snap.prefs && snap.prefs.node) || snap.nodeId || "", exit:(snap.prefs && snap.prefs.exit) || "tun", bypass:(snap.prefs && snap.prefs.bypass) || []}, snap.prefs || {}, patch);
+  const base = Object.assign({theme:"system", density:"compact", silent:true, core:"xray", mtu:1400, split:!!snap.split, auto:snap.auto !== false, kill:!!(snap.prefs && snap.prefs.kill), node:(snap.prefs && snap.prefs.node) || snap.nodeId || "", exit:(snap.prefs && snap.prefs.exit) || "tun", bypass:(snap.prefs && snap.prefs.bypass) || [], hoyo:!!(snap.prefs && snap.prefs.hoyo), blizzard:!!(snap.prefs && snap.prefs.blizzard), verbose:!!(snap.prefs && snap.prefs.verbose)}, snap.prefs || {}, patch);
   try { paint(await api("/v1/prefs", base)); }
   catch(e){ $("err").hidden=false; $("err").textContent=e.message; }
 }
@@ -635,6 +659,9 @@ document.querySelectorAll("#themes button").forEach((b) => { b.onclick = () => p
 document.querySelectorAll("#dens button").forEach((b) => { b.onclick = () => pushPrefs({density:b.dataset.v}); });
 document.querySelectorAll("#mtus button").forEach((b) => { b.onclick = () => pushPrefs({mtu:Number(b.dataset.v)}); });
 $("silent").onclick = () => pushPrefs({silent: !$("silent").classList.contains("on")});
+$("hoyo").onclick = () => pushPrefs({hoyo: !$("hoyo").classList.contains("on")});
+$("blizzard").onclick = () => pushPrefs({blizzard: !$("blizzard").classList.contains("on")});
+$("verbose").onclick = () => pushPrefs({verbose: !$("verbose").classList.contains("on")});
 setInterval(pull, 900);
 pull();
 </script>

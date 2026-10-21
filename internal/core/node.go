@@ -192,33 +192,69 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []strin
 	if n.Proto == "hysteria" && mtu > 1200 {
 		mtu = 1200
 	}
+	prefs := LoadPrefs()
+	verbose := false
+	var domains, presetIPs []string
+	// На Android пакет режет VpnService. process при routeOnly=false там не
+	// находится и только добавляет всем второй DNS. Пресеты туда же не кладём.
+	bypass = NormalizeBypass(bypass)
+	if tunFD >= 0 {
+		bypass = nil
+		proxyOnly = false
+	} else {
+		verbose = prefs.Verbose
+		if prefs.Hoyo || prefs.Blizzard {
+			bypass, domains, presetIPs = appendPresets(bypass, prefs.Hoyo, prefs.Blizzard)
+		}
+	}
+	// Живой DNS для «мимо» — адрес провайдера, не DoH через узел.
+	// Запрос модуля помечен inbound dns-direct и уходит в direct. Хост-маршрут
+	// на этот адрес (не 1.1.1.1) не даёт пакету вернуться в tun: NRPT по-прежнему
+	// шлёт чужие имена на 1.1.1.1 внутрь туннеля.
+	needDirectDNS := tunFD < 0 && (len(bypass) > 0 || len(domains) > 0)
+	resolver := ""
+	if needDirectDNS {
+		resolver = DirectResolver()
+	}
+
 	rules := []any{}
+	if needDirectDNS {
+		rules = append(rules, map[string]any{
+			"type": "field", "ruleTag": "dns-direct",
+			"inboundTag": []string{"dns-direct"}, "outboundTag": "direct",
+		})
+	}
 	if ip := net.ParseIP(n.dialAddr()); ip != nil {
 		rules = append(rules, map[string]any{"type": "field", "ip": []string{ip.String()}, "outboundTag": "direct"})
 	}
 	// Пул FakeDNS не «частная сеть». Иначе geoip:private утащит его мимо туннеля.
+	// Фейковый пул остаётся выше процесса: чужой кэш 198.18 не уходит в никуда.
 	rules = append(rules, map[string]any{"type": "field", "ip": []string{"198.18.0.0/16"}, "outboundTag": "proxy"})
 	rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"})
-	// Имя процесса — до перехвата порта 53. Иначе запрос игры отвечает fakedns,
-	// правило 198.18 уводит её в туннель, и список «мимо» ничего не меняет.
-	// Фейковый пул остаётся выше: чужой кэш 198.18 не уходит в никуда.
-	// На Android пакет режет VpnService. process при routeOnly=false там не
-	// находится и только добавляет всем второй DNS.
-	bypass = NormalizeBypass(bypass)
-	if tunFD >= 0 {
-		bypass = nil
-		// Телефон всегда VpnService. Системный прокси там не наш режим.
-		proxyOnly = false
-	}
+	// Имя процесса — до перехвата порта 53. Иначе свой DNS игры отвечает fakedns.
 	if len(bypass) > 0 {
 		rules = append(rules, map[string]any{
-			"type": "field", "process": bypass, "outboundTag": "direct",
+			"type": "field", "ruleTag": "bypass-process",
+			"process": bypass, "outboundTag": "direct",
 		})
 	}
 	// Только из tun/socks. Иначе запрос самого DNS-модуля снова попадёт в dns-out.
 	rules = append(rules, map[string]any{
 		"type": "field", "inboundTag": []string{"tun", "socks"}, "port": "53", "outboundTag": "dns-out",
 	})
+	// Домен и сеть — запас, если имя процесса не нашлось (на Windows DNS шлёт Dnscache).
+	if len(domains) > 0 {
+		rules = append(rules, map[string]any{
+			"type": "field", "ruleTag": "bypass-domain",
+			"domain": domains, "outboundTag": "direct",
+		})
+	}
+	if len(presetIPs) > 0 {
+		rules = append(rules, map[string]any{
+			"type": "field", "ruleTag": "bypass-ip",
+			"ip": presetIPs, "outboundTag": "direct",
+		})
+	}
 	if split {
 		rules = append(rules,
 			map[string]any{"type": "field", "domain": RussiaDirectDomains(), "outboundTag": "direct"},
@@ -227,29 +263,33 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []strin
 	}
 	rules = append(rules, map[string]any{"type": "field", "port": "0-65535", "outboundTag": "proxy"})
 
-	// РФ — живой DNS напрямую. Остальное — фейковый адрес, а если браузер
-	// всё же взял чужой IP, имя забираем из самого запроса.
+	// РФ — живой DNS. Остальное — фейковый адрес, имя потом забираем из запроса.
+	// Домены пресета не идут в fakedns: их спрашиваем у провайдера сразу.
 	var dnsServers []any
-	if split {
-		dnsServers = []any{
-			map[string]any{
-				"address":      "77.88.8.8",
-				"domains":      RussiaDirectDomains(),
-				"skipFallback": true,
-				"detour":       "direct",
-			},
-			"fakedns",
-		}
-	} else {
-		dnsServers = []any{"fakedns"}
-	}
-	if len(bypass) > 0 {
-		// Браузеру по-прежнему отвечает fakedns: у этого сервера нет domains,
-		// он запасной. Прямому выходу имя из запроса надо превратить в живой
-		// адрес. DoH идёт через узел, UDP/53 к провайдеру не выпускаем.
+	if len(domains) > 0 && resolver != "" {
 		dnsServers = append(dnsServers, map[string]any{
-			"address": "https://1.1.1.1/dns-query",
-			"detour":  "proxy",
+			"address":      resolver,
+			"domains":      domains,
+			"skipFallback": true,
+			"finalQuery":   true,
+			"tag":          "dns-direct",
+		})
+	}
+	if split {
+		dnsServers = append(dnsServers, map[string]any{
+			"address":      "77.88.8.8",
+			"domains":      RussiaDirectDomains(),
+			"skipFallback": true,
+			"detour":       "direct",
+		})
+	}
+	dnsServers = append(dnsServers, "fakedns")
+	if resolver != "" {
+		// fakedns для браузера остаётся первым запасным. Когда прямому выходу
+		// нужно живое имя (FakeDNS пропускается), спрашиваем провайдера, не узел.
+		dnsServers = append(dnsServers, map[string]any{
+			"address": resolver,
+			"tag":     "dns-direct",
 		})
 	}
 	dns := map[string]any{
@@ -275,8 +315,16 @@ func RenderXrayTun(n *Node, port int, split bool, tunFD, mtu int, bypass []strin
 		"settings": map[string]any{"auth": "noauth", "udp": true},
 	})
 
+	logCfg := map[string]any{"loglevel": "warning"}
+	if verbose {
+		// info пишет «taking detour» и «Hit route rule». access и так в stdout:
+		// строка [tun -> direct] — куда ушло. «Unables to find local process name»
+		// уже ошибка, она видна и без этого тумблера, рядом с правилом.
+		logCfg["loglevel"] = "info"
+		logCfg["dnsLog"] = true
+	}
 	cfg := map[string]any{
-		"log": map[string]any{"loglevel": "warning"},
+		"log": logCfg,
 		"dns": dns,
 		"fakedns": map[string]any{
 			"ipPool":   "198.18.0.0/16",

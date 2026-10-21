@@ -371,31 +371,30 @@ func TestBypassProcessesStayDirect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(plain), `"process"`) {
-		t.Fatal("empty bypass list must not add a process rule")
+	if strings.Contains(string(plain), `"process"`) || strings.Contains(string(plain), "dns-direct") {
+		t.Fatal("empty bypass list must not add a process rule or a direct resolver")
 	}
+	prev := directResolverFn
+	directResolverFn = func() string { return "9.9.9.9" }
+	t.Cleanup(func() { directResolverFn = prev })
 	b, err := RenderXrayTun(n, 10808, true, -1, 1400, []string{"Steam.EXE", "self/", `C:\Games\cs2.exe`, "steam.exe", "ply.exe"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(b)
-	if !strings.Contains(s, `"process"`) || !strings.Contains(s, "steam.exe") || !strings.Contains(s, "C:/Games/cs2.exe") {
+	if !strings.Contains(s, `"process"`) || !strings.Contains(s, "Steam.exe") || !strings.Contains(s, "C:/Games/cs2.exe") {
 		t.Fatal(s)
 	}
-	if strings.Contains(s, "Steam.EXE") || strings.Contains(s, "self/") || strings.Contains(s, "ply.exe") {
-		t.Fatal("own process must not be bypassed, bare name is lowercase")
+	if strings.Contains(s, "steam.exe") || strings.Contains(s, "Steam.EXE") || strings.Contains(s, "self/") || strings.Contains(s, "ply.exe") {
+		t.Fatal("own process must not be bypassed, bare name keeps its letters")
 	}
-	for _, need := range []string{`"fakedns"`, `"http"`, `"tls"`, `"metadataOnly": false`, `"routeOnly": false`, "77.88.8.8", "https://1.1.1.1/dns-query", `"detour": "proxy"`} {
+	for _, need := range []string{`"fakedns"`, `"http"`, `"tls"`, `"metadataOnly": false`, `"routeOnly": false`, "77.88.8.8", "9.9.9.9", `"tag": "dns-direct"`, `"ruleTag": "dns-direct"`} {
 		if !strings.Contains(s, need) {
 			t.Fatalf("bypass must keep the working path, missing %s", need)
 		}
 	}
-	if strings.Contains(s, "quic") || strings.Contains(s, `"routeOnly": true`) {
-		t.Fatal("bypass must not change sniffing")
-	}
-	doh := strings.Index(s, "https://1.1.1.1/dns-query")
-	if doh < 0 || strings.Contains(s[doh:doh+90], `"direct"`) {
-		t.Fatal("re-resolve must not ask the ISP")
+	if strings.Contains(s, "quic") || strings.Contains(s, `"routeOnly": true`) || strings.Contains(s, "dns-query") || strings.Contains(s, `"detour": "proxy"`) {
+		t.Fatal("bypass must not sniff quic or resolve through the node")
 	}
 	route := s[strings.Index(s, `"routing"`):]
 	if strings.Index(route, `"process"`) < strings.Index(route, "198.18.0.0/16") {
@@ -403,6 +402,82 @@ func TestBypassProcessesStayDirect(t *testing.T) {
 	}
 	if strings.Index(route, `"process"`) > strings.Index(route, `"dns-out"`) {
 		t.Fatal("bypass must be ahead of dns hijack, or the game gets a fake address")
+	}
+	if strings.Index(route, "dns-direct") > strings.Index(route, `"process"`) {
+		t.Fatal("the resolver's own query must leave before process matching")
+	}
+}
+
+func TestPresetBypassRules(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	prev := directResolverFn
+	directResolverFn = func() string { return "192.168.1.1" }
+	t.Cleanup(func() { directResolverFn = prev })
+	if err := SavePrefs(Prefs{Hoyo: true, Blizzard: true, Verbose: true}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := ParseLink(paper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := RenderXrayTun(n, 10808, false, -1, 1400, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, need := range []string{
+		"HYP.exe", "ZenlessZoneZero.exe", "HYUpdater.exe",
+		"Battle.net.exe", "Wow.exe", "WowClassic.exe", "Agent.exe",
+		"domain:zenlesszonezero.com", "domain:hoyoverse.com", "domain:mihoyo.com", "domain:hoyolab.com",
+		"domain:battle.net", "domain:blizzard.com",
+		"24.105.0.0/18", "137.221.64.0/18",
+		"192.168.1.1", `"finalQuery": true`, `"tag": "dns-direct"`,
+		`"ruleTag": "bypass-domain"`, `"ruleTag": "bypass-ip"`, `"ruleTag": "bypass-process"`,
+		`"loglevel": "info"`, `"dnsLog": true`,
+	} {
+		if !strings.Contains(s, need) {
+			t.Fatalf("missing %s", need)
+		}
+	}
+	if strings.Contains(s, "dns-query") || strings.Contains(s, "akamai") {
+		t.Fatal(s)
+	}
+	route := s[strings.Index(s, `"routing"`):]
+	if strings.Index(route, "bypass-process") > strings.Index(route, `"dns-out"`) {
+		t.Fatal("process rule must stay ahead of dns hijack")
+	}
+	if strings.Index(route, `"dns-out"`) > strings.Index(route, "bypass-domain") {
+		t.Fatal("domain fallback must follow the dns hijack")
+	}
+	if strings.Index(route, "bypass-domain") > strings.Index(route, "bypass-ip") {
+		t.Fatal("ip fallback follows domains")
+	}
+	if strings.Contains(s, `"loglevel": "warning"`) {
+		t.Fatal("verbose log should replace the warning level")
+	}
+}
+
+func TestAndroidIgnoresDesktopBypass(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := SavePrefs(Prefs{Hoyo: true, Blizzard: true, Verbose: true, Bypass: []string{"Wow.exe"}}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := ParseLink(paper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := RenderXrayTun(n, 10808, true, 7, 1400, []string{"com.example.game", "Wow.exe"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, bad := range []string{`"process"`, "dns-direct", "hoyoverse", "battle.net", "Wow.exe", `"dnsLog"`, `"loglevel": "info"`, "24.105.0.0/18"} {
+		if strings.Contains(s, bad) {
+			t.Fatalf("android picked up desktop bypass %s", bad)
+		}
+	}
+	if !strings.Contains(s, `"fd": 7`) || !strings.Contains(s, `"protocol": "tun"`) {
+		t.Fatal(s)
 	}
 }
 
